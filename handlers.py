@@ -220,7 +220,7 @@ async def _panel_text(update, ctx, txt) -> bool:
             f"🗑 O'chirilgan:        <b>{db.sg('del_count','0')}</b>\n"
             f"━━━━━━━━━━━━━━━━\n"
             f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ O\'chirilgan'}</b>\n"
-            f"⏰ {now}",
+         "⏰ {}".format(now),
             parse_mode="HTML",
             reply_markup=ik_stat(),
         )

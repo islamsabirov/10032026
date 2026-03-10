@@ -163,7 +163,7 @@ async def msg_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if db.user_banned(u.id): 
         return
 
-    # ── Bekor / Orqaga ───────────────────────────────────────
+    # Bekor / Orqaga
     if txt in ("❌ Bekor", "◀️ Orqaga", "⬇️ Panelni yopish"):
         db.step_set(u.id, "", "")
         if txt == "⬇️ Panelni yopish":
@@ -174,17 +174,17 @@ async def msg_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("🏠 /start")
         return
 
-    # ── Admin panel tugmalari ────────────────────────────────
+    # Admin panel tugmalari
     if adm:
         if await _panel_text(update, ctx, txt):
             return
 
-    # ── Step handlerlar ──────────────────────────────────────
+    # Step handlerlar
     if step:
         if await _do_step(update, ctx, step, sdata):
             return
 
-    # ── Kino kodi ────────────────────────────────────────────
+    # Kino kodi
     if txt.isdigit():
         if not db.is_active() and not adm:
             await msg.reply_text("🔧 Bot vaqtinchalik to'xtatilgan.")
@@ -308,7 +308,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     bot = ctx.bot
     adm = db.is_admin(u.id)
 
-    # ── Kino video ───────────────────────────────────────────
+    # Kino video
     if step == "kino_video" and adm:
         video = msg.video or msg.document
         if not video:
@@ -353,7 +353,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
         )
         return True
 
-    # ── Kino rasm (ixtiyoriy) ────────────────────────────────
+    # Kino rasm (ixtiyoriy)
     if step == "kino_photo" and adm:
         if msg.photo:
             photo_id = msg.photo[-1].file_id
@@ -372,7 +372,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
             )
         return True
 
-    # ── Kino o'chirish ───────────────────────────────────────
+    # Kino o'chirish
     if step == "kino_del" and adm:
         if not txt.isdigit():
             await msg.reply_text("❗ Raqam yuboring!") 
@@ -387,7 +387,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                                   parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── Kino tahrirlash — kod ────────────────────────────────
+    # Kino tahrirlash — kod
     if step == "kino_edit_kod" and adm:
         if not txt.isdigit():
             await msg.reply_text("❗ Raqam yuboring!") 
@@ -405,7 +405,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
         )
         return True
 
-    # ── Kino tahrirlash — nom ────────────────────────────────
+    # Kino tahrirlash — nom
     if step == "kino_edit_title" and adm:
         code = int(sdata)
         db.movie_edit(code, txt)
@@ -414,7 +414,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                               parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── Kino qidirish ────────────────────────────────────────
+    # Kino qidirish
     if step == "adm_search" and adm:
         movies = db.movie_search(txt)
         db.step_set(u.id, "", "")
@@ -428,7 +428,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
         )
         return True
 
-    # ── Kanal qo'shish ───────────────────────────────────────
+    # Kanal qo'shish
     if step == "ch_add" and adm:
         ch = txt if txt.startswith("@") else f"@{txt.lstrip('@')}"
         title = ch
@@ -444,14 +444,14 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                               parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── Kanal o'chirish ──────────────────────────────────────
+    # Kanal o'chirish
     if step == "ch_del" and adm:
         db.ch_del(txt.strip())
         db.step_set(u.id, "", "")
         await msg.reply_text("✅ Kanal o'chirildi!", reply_markup=kb_panel())
         return True
 
-    # ── Admin qo'shish ───────────────────────────────────────
+    # Admin qo'shish
     if step == "adm_add" and u.id == OWNER_ID:
         if not txt.isdigit():
             await msg.reply_text("❗ ID raqam yuboring!") 
@@ -469,7 +469,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
             await msg.reply_text(f"⚠️ <code>{uid}</code> allaqachon admin.", parse_mode="HTML")
         return True
 
-    # ── Admin o'chirish ──────────────────────────────────────
+    # Admin o'chirish
     if step == "adm_del" and u.id == OWNER_ID:
         if not txt.isdigit():
             await msg.reply_text("❗ ID raqam yuboring!") 
@@ -481,7 +481,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                               parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── User bloklash ────────────────────────────────────────
+    # User bloklash
     if step == "usr_ban" and adm:
         if not txt.isdigit():
             await msg.reply_text("❗ ID raqam yuboring!") 
@@ -497,7 +497,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
             pass
         return True
 
-    # ── User blokdan chiqarish ───────────────────────────────
+    # User blokdan chiqarish
     if step == "usr_unban" and adm:
         if not txt.isdigit():
             await msg.reply_text("❗ ID raqam yuboring!") 
@@ -509,7 +509,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                               parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── User qidirish ────────────────────────────────────────
+    # User qidirish
     if step == "usr_search" and adm:
         users = db.user_search(txt)
         db.step_set(u.id, "", "")
@@ -524,7 +524,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
                               parse_mode="HTML", reply_markup=kb_panel())
         return True
 
-    # ── Broadcast — oddiy ────────────────────────────────────
+    # Broadcast — oddiy
     if step == "bc_text" and adm:
         db.step_set(u.id, "", "")
         uids = db.user_ids()
@@ -539,7 +539,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
         )
         return True
 
-    # ── Broadcast — forward ──────────────────────────────────
+    # Broadcast — forward
     if step == "bc_fwd" and adm:
         db.step_set(u.id, "", "")
         uids = db.user_ids()
@@ -554,7 +554,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
         )
         return True
 
-    # ── Broadcast — bitta ────────────────────────────────────
+    # Broadcast — bitta
     if step == "bc_one_id" and adm:
         if not txt.isdigit():
             await msg.reply_text("❗ ID raqam yuboring!") 
@@ -577,7 +577,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
             await msg.reply_text(f"❌ Yuborib bo'lmadi: {e}", reply_markup=kb_panel())
         return True
 
-    # ── Sozlamalar ───────────────────────────────────────────
+    # Sozlamalar
     if step == "sozl_start" and adm:
         db.ss("start_text", txt)
         db.step_set(u.id, "", "")
@@ -613,7 +613,7 @@ async def cb_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await q.answer()
 
-    # ── Sub tekshirish ───────────────────────────────────────
+    # Sub tekshirish
     if data == "sub_check":
         if await check_sub(bot, u.id):
             try:
@@ -629,7 +629,7 @@ async def cb_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         await q.answer("Kanalga qo'lda a'zo bo'ling!", show_alert=True)
         return
 
-    # ── Bekor ────────────────────────────────────────────────
+    # Bekor
     if data == "bekor":
         db.step_set(u.id, "", "")
         try:
@@ -640,7 +640,7 @@ async def cb_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             await bot.send_message(u.id, "❌ Bekor qilindi.", reply_markup=kb_panel())
         return
 
-    # ── Panel orqaga ─────────────────────────────────────────
+    # Panel orqaga
     if data == "back_panel" and adm:
         db.step_set(u.id, "", "")
         try:
@@ -767,4 +767,300 @@ async def cb_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not movies:
             await q.answer("Hali kino yo'q!", show_alert=True)
             return
-        medals = ["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅
+        medals = ["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅"]
+        lines = "\n".join(
+            f"{medals[i]} #{m['id']} — {m['title'][:22]} ({m['downloads']} 📥)"
+            for i, m in enumerate(movies)
+        )
+        await q.message.edit_text(
+            f"🏆 <b>Top {len(movies)} kino (yuklanishlar bo'yicha):</b>\n\n{lines}",
+            parse_mode="HTML", reply_markup=ik_back(),
+        )
+        return
+
+    if data == "kino_rand" and adm:
+        code = db.movie_random()
+        if not code:
+            await q.answer("Hali kino yo'q!", show_alert=True)
+            return
+        try:
+            await q.message.delete()
+        except:
+            pass
+        
+        # Mock update object for _send_movie
+        class FakeMessage:
+            def __init__(self, chat_id):
+                self.chat_id = chat_id
+            async def reply_text(self, *a, **kw):
+                return await bot.send_message(self.chat_id, *a, **kw)
+            async def reply_video(self, *a, **kw):
+                return await bot.send_video(self.chat_id, *a, **kw)
+            async def reply_photo(self, *a, **kw):
+                return await bot.send_photo(self.chat_id, *a, **kw)
+            async def reply_document(self, *a, **kw):
+                return await bot.send_document(self.chat_id, *a, **kw)
+        
+        class FakeUpdate:
+            def __init__(self, user_id):
+                self.effective_user = u
+                self.message = FakeMessage(user_id)
+        
+        await _send_movie(FakeUpdate(u.id), ctx, code)
+        return
+
+    # ════════════════════════════════════════════════════════
+    #  KANALLAR
+    # ════════════════════════════════════════════════════════
+    if data == "ch_add" and adm:
+        db.step_set(u.id, "ch_add", "")
+        await q.message.edit_text(
+            "📢 Kanal <b>@username</b> ini yuboring:\n"
+            "📄 Namuna: <code>@KanalNomi</code>",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "ch_list" and adm:
+        chs = db.ch_list()
+        if not chs:
+            await q.answer("Hali kanal yo'q!", show_alert=True)
+            return
+        lines = "\n".join(f"• {c['cid']} — {c['title'] or '—'}" for c in chs)
+        await q.message.edit_text(
+            f"📋 <b>Kanallar ({len(chs)} ta):</b>\n\n{lines}",
+            parse_mode="HTML", reply_markup=ik_back(),
+        )
+        return
+
+    if data == "ch_del" and adm:
+        chs = db.ch_list()
+        if not chs:
+            await q.answer("Kanal yo'q!", show_alert=True)
+            return
+        ids = "\n".join(c["cid"] for c in chs)
+        db.step_set(u.id, "ch_del", "")
+        await q.message.edit_text(
+            f"🗑 O'chiriladigan kanal @username:\n\n<code>{ids}</code>",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    # ════════════════════════════════════════════════════════
+    #  FOYDALANUVCHILAR
+    # ════════════════════════════════════════════════════════
+    if data == "usr_list" and adm:
+        users = db.user_list(25)
+        total = db.user_count()
+        lines = "\n".join(
+            f"{'🔴' if u2['ban']==1 else '👤'} <code>{u2['id']}</code> — {u2['name'][:18]}"
+            for u2 in users
+        )
+        await q.message.edit_text(
+            f"👥 <b>Foydalanuvchilar (jami {total})</b>\n"
+            f"<i>Oxirgi 25 ta:</i>\n\n{lines}",
+            parse_mode="HTML", reply_markup=ik_back(),
+        )
+        return
+
+    if data == "usr_ban" and adm:
+        db.step_set(u.id, "usr_ban", "")
+        await q.message.edit_text(
+            "🔴 Bloklash uchun <b>user ID</b> sini yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "usr_unban" and adm:
+        db.step_set(u.id, "usr_unban", "")
+        await q.message.edit_text(
+            "🟢 Blokdan chiqarish uchun <b>user ID</b> sini yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "usr_search" and adm:
+        db.step_set(u.id, "usr_search", "")
+        try:
+            await q.message.delete()
+        except:
+            pass
+        await bot.send_message(
+            u.id,
+            "🔍 User <b>ID</b>, ism yoki @username yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    # ════════════════════════════════════════════════════════
+    #  XABARNOMA
+    # ════════════════════════════════════════════════════════
+    if data == "bc_text" and adm:
+        db.step_set(u.id, "bc_text", "")
+        await q.message.edit_text(
+            f"✍️ <b>{db.user_count()}</b> ta userga yubormoqchi xabarni yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "bc_fwd" and adm:
+        db.step_set(u.id, "bc_fwd", "")
+        await q.message.edit_text(
+            "📨 Forward qilinadigan xabarni yuboring:",
+            reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "bc_one" and adm:
+        db.step_set(u.id, "bc_one_id", "")
+        await q.message.edit_text(
+            "👤 User <b>Telegram ID</b> sini yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    # ════════════════════════════════════════════════════════
+    #  SOZLAMALAR
+    # ════════════════════════════════════════════════════════
+    if data == "sozl_toggle" and adm:
+        new = not db.is_active()
+        db.ss("bot_active", "1" if new else "0")
+        status = "✅ Bot YOQILDI!" if new else "❌ Bot O'CHIRILDI!"
+        await q.message.edit_text(
+            f"🔄 {status}",
+            reply_markup=ik_sozl(new),
+        )
+        return
+
+    if data == "sozl_start" and adm:
+        cur = db.sg("start_text")
+        db.step_set(u.id, "sozl_start", "")
+        await q.message.edit_text(
+            f"📝 <b>Hozirgi start xabari:</b>\n<code>{cur[:200]}</code>\n\n"
+            f"Yangi xabarni yuboring:\n<i>{{name}} — foydalanuvchi ismi</i>",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "sozl_reklama" and adm:
+        cur = db.sg("reklama") or "—"
+        db.step_set(u.id, "sozl_reklama", "")
+        await q.message.edit_text(
+            f"📢 <b>Hozirgi reklama:</b>\n<code>{cur[:200]}</code>\n\n"
+            f"Yangi reklama matnini yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "sozl_kinokanal" and adm:
+        cur = db.sg("kino_ch") or "—"
+        db.step_set(u.id, "sozl_kinokanal", "")
+        await q.message.edit_text(
+            f"🎬 Hozirgi kino kanal: <b>{cur}</b>\n\n"
+            f"Yangi kanal @username yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    # ════════════════════════════════════════════════════════
+    #  ADMINLAR
+    # ════════════════════════════════════════════════════════
+    if data == "adm_add" and adm:
+        if u.id != OWNER_ID:
+            await q.answer("❌ Faqat bot egasi!", show_alert=True)
+            return
+        db.step_set(u.id, "adm_add", "")
+        try:
+            await q.message.delete()
+        except:
+            pass
+        await bot.send_message(
+            u.id,
+            "👮 Yangi admin <b>Telegram ID</b> sini yuboring:",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "adm_del" and adm:
+        if u.id != OWNER_ID:
+            await q.answer("❌ Faqat bot egasi!", show_alert=True)
+            return
+        extra = [a for a in db.admins() if a != OWNER_ID]
+        if not extra:
+            await q.answer("Qo'shimcha admin yo'q!", show_alert=True)
+            return
+        db.step_set(u.id, "adm_del", "")
+        ids = "\n".join(str(a) for a in extra)
+        try:
+            await q.message.delete()
+        except:
+            pass
+        await bot.send_message(
+            u.id,
+            f"🗑 O'chiriladigan admin ID:\n\n<code>{ids}</code>",
+            parse_mode="HTML", reply_markup=ik_bekor(),
+        )
+        return
+
+    if data == "adm_list" and adm:
+        admins = db.admins()
+        lines = "\n".join(
+            f"{'👑' if a == OWNER_ID else '👮'} <code>{a}</code>"
+            for a in admins
+        )
+        await q.message.edit_text(
+            f"📋 <b>Adminlar ({len(admins)} ta):</b>\n\n{lines}",
+            parse_mode="HTML", reply_markup=ik_back(),
+        )
+        return
+
+
+# ═══════════════════════════════════════════════════════════════
+#  KINO YUBORISH
+# ═══════════════════════════════════════════════════════════════
+async def _send_movie(update, ctx, code: int):
+    bot = ctx.bot
+    me = await bot.get_me()
+    movie = db.movie_get(code)
+
+    if not movie:
+        await update.message.reply_text(
+            f"😔 <b>#{code} kodli kino topilmadi.</b>",
+            parse_mode="HTML",
+        )
+        return
+
+    db.movie_downloaded(code)
+    kino_ch = db.sg("kino_ch", "")
+    reklama = db.sg("reklama", "")
+    title = movie["title"]
+    caption = f"🎬 <b>{title}</b>\n🔢 Kod: <code>{code}</code>"
+    if reklama:
+        caption += f"\n\n{reklama}"
+
+    kb = ik_kino_card(code, me.username, kino_ch)
+
+    try:
+        if movie["photo_id"]:
+            await update.message.reply_photo(
+                movie["photo_id"],
+                caption=caption, parse_mode="HTML", reply_markup=kb,
+            )
+            await update.message.reply_video(
+                movie["file_id"],
+                caption=f"🎬 <b>{title}</b>",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_video(
+                movie["file_id"],
+                caption=caption, parse_mode="HTML", reply_markup=kb,
+            )
+    except TelegramError:
+        try:
+            await update.message.reply_document(
+                movie["file_id"],
+                caption=caption, parse_mode="HTML", reply_markup=kb,
+            )
+        except TelegramError as e:
+            await update.message.reply_text(f"❌ Kino yuborishda xato: {e}")

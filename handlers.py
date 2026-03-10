@@ -208,20 +208,27 @@ async def _panel_text(update, ctx, txt) -> bool:
         t = db.user_count(); l = db.user_left_count()
         now = datetime.now().strftime("%H:%M | %d.%m.%Y")
         await msg.reply_text(
-    f"📊 <b>Statistika</b>\n\n"
-    f"━━━━━━━━━━━━━━━━\n"
-    f"👥 Jami foydalanuvchi: <b>{t}</b>\n"
-    f"✅ Faol:               <b>{t - l}</b>\n"
-    f"❌ Tark etgan:         <b>{l}</b>\n"
-    f"📅 Bugun qo'shildi:   <b>{db.user_count_today()}</b>\n"
-    f"📆 Bu oy:              <b>{db.user_count_month()}</b>\n"
-    f"━━━━━━━━━━━━━━━━\n"
-    f"🎬 Kinolar:            <b>{db.movie_count()}</b>\n"
-    f"🗑 O'chirilgan:        <b>{db.sg('del_count','0')}</b>\n"
-    f"━━━━━━━━━━━━━━━━\n"
-    f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ O\\'chirilgan'}</b>\n"
-    f"⏰ {now}"
-)
+    if txt == "📊 Statistika":
+        t = db.user_count(); l = db.user_left_count()
+        now = datetime.now().strftime("%H:%M | %d.%m.%Y")
+        await msg.reply_text(
+            f"📊 <b>Statistika</b>\n\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"👥 Jami foydalanuvchi: <b>{t}</b>\n"
+            f"✅ Faol:               <b>{t - l}</b>\n"
+            f"❌ Tark etgan:         <b>{l}</b>\n"
+            f"📅 Bugun qo'shildi:   <b>{db.user_count_today()}</b>\n"
+            f"📆 Bu oy:              <b>{db.user_count_month()}</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🎬 Kinolar:            <b>{db.movie_count()}</b>\n"
+            f"🗑 O'chirilgan:        <b>{db.sg('del_count','0')}</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ O\\'chirilgan'}</b>\n"
+            f"⏰ {now}",
+            parse_mode="HTML",
+            reply_markup=ik_stat(),
+        )
+        return True
             parse_mode="HTML",
             reply_markup=ik_stat(),
         )

@@ -226,7 +226,7 @@ async def _panel_text(update, ctx, txt) -> bool:
             f"🎬 Kinolar:            <b>{db.movie_count()}</b>\n"
             f"🗑 O'chirilgan:        <b>{db.sg('del_count','0')}</b>\n"
             f"━━━━━━━━━━━━━━━━\n"
-            f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ O\'chirilgan'}</b>\n"
+            f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ Ochirilgan'}</b>\n"
             f"⏰ {now}",
             parse_mode="HTML",
             reply_markup=ik_stat(),
@@ -272,7 +272,7 @@ async def _panel_text(update, ctx, txt) -> bool:
         kch = db.sg("kino_ch") or "—"
         await msg.reply_text(
             f"⚙️ <b>Sozlamalar</b>\n\n"
-            f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ O\'chirilgan'}</b>\n"
+            f"🤖 Bot: <b>{'✅ Yoqilgan' if db.is_active() else '❌ Ochirilgan'}</b>\n"
             f"🎬 Kino kanal: <b>{kch}</b>",
             parse_mode="HTML",
             reply_markup=ik_sozl(db.is_active()),
@@ -312,7 +312,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     if step == "kino_video" and adm:
         video = msg.video or msg.document
         if not video:
-            await msg.reply_text("🎬 Video yuboring!"); 
+            await msg.reply_text("🎬 Video yuboring!") 
             return True
         file_id = video.file_id
         title = (msg.caption or "").strip()
@@ -375,7 +375,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── Kino o'chirish ───────────────────────────────────────
     if step == "kino_del" and adm:
         if not txt.isdigit():
-            await msg.reply_text("❗ Raqam yuboring!"); 
+            await msg.reply_text("❗ Raqam yuboring!") 
             return True
         code = int(txt)
         db.step_set(u.id, "", "")
@@ -390,7 +390,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── Kino tahrirlash — kod ────────────────────────────────
     if step == "kino_edit_kod" and adm:
         if not txt.isdigit():
-            await msg.reply_text("❗ Raqam yuboring!"); 
+            await msg.reply_text("❗ Raqam yuboring!") 
             return True
         code = int(txt)
         m = db.movie_get(code)
@@ -454,7 +454,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── Admin qo'shish ───────────────────────────────────────
     if step == "adm_add" and u.id == OWNER_ID:
         if not txt.isdigit():
-            await msg.reply_text("❗ ID raqam yuboring!"); 
+            await msg.reply_text("❗ ID raqam yuboring!") 
             return True
         uid = int(txt)
         db.step_set(u.id, "", "")
@@ -472,7 +472,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── Admin o'chirish ──────────────────────────────────────
     if step == "adm_del" and u.id == OWNER_ID:
         if not txt.isdigit():
-            await msg.reply_text("❗ ID raqam yuboring!"); 
+            await msg.reply_text("❗ ID raqam yuboring!") 
             return True
         uid = int(txt)
         db.admin_del(uid)
@@ -484,7 +484,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── User bloklash ────────────────────────────────────────
     if step == "usr_ban" and adm:
         if not txt.isdigit():
-            await msg.reply_text("❗ ID raqam yuboring!"); 
+            await msg.reply_text("❗ ID raqam yuboring!") 
             return True
         uid = int(txt)
         db.user_ban(uid)
@@ -500,7 +500,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── User blokdan chiqarish ───────────────────────────────
     if step == "usr_unban" and adm:
         if not txt.isdigit():
-            await msg.reply_text("❗ ID raqam yuboring!"); 
+            await msg.reply_text("❗ ID raqam yuboring!") 
             return True
         uid = int(txt)
         db.user_unban(uid)
@@ -557,7 +557,7 @@ async def _do_step(update, ctx, step, sdata) -> bool:
     # ── Broadcast — bitta ────────────────────────────────────
     if step == "bc_one_id" and adm:
         if not txt.isdigit():
-            await msg.reply_text("❗ ID raqam yuboring!"); 
+            await msg.reply_text("❗ ID raqam yuboring!") 
             return True
         db.step_set(u.id, "bc_one_msg", txt)
         await msg.reply_text(
@@ -767,5 +767,4 @@ async def cb_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not movies:
             await q.answer("Hali kino yo'q!", show_alert=True)
             return
-        medals = ["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅"]
-        lines = "\n".join
+        medals = ["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅", "🏅", "🏅

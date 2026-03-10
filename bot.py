@@ -6,13 +6,13 @@
 ║   ✅  Majburiy obuna, Reklama, Kino kanal                    ║
 ╚══════════════════════════════════════════════════════════════╝
 """
-import logging, sys, time, os
+import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()  # faqat local uchun .env faylni o‘qish
 
-BOT_TOKEN: str = "BOT_TOKEN"
-OWNER_ID:  int = 5907118746
+BOT_TOKEN: str = os.getenv("BOT_TOKEN")
+OWNER_ID:  int = int(os.getenv("OWNER_ID"))
 
 logging.basicConfig(
     level=logging.INFO,

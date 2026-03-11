@@ -1,5 +1,17 @@
-python-telegram-bot==21.6
-python-dotenv==1.0.1
-aiohttp==3.9.5
-flask
-requests
+# Core dependencies
+python-telegram-bot==20.7
+motor==3.3.2              # Async MongoDB driver
+redis==5.0.1              # Redis cache
+python-dotenv==1.0.0      # Environment variables
+
+# Utilities
+pytz==2023.3              # Timezone handling
+aiohttp==3.9.1            # Async HTTP requests
+ujson==5.9.0              # Fast JSON operations
+
+# Monitoring & logging
+prometheus-client==0.19.0 # Metrics
+python-json-logger==2.0.7 # JSON logging
+
+# Security
+cryptography==41.0.7      # Encryption utilities

@@ -15,15 +15,12 @@ class Config:
     """Central configuration class"""
     
     # Telegram
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
-    ADMIN_IDS: List[int] = [int(id_) for id_ in os.getenv("ADMIN_IDS", "").split(",") if id_]
-    CHANNEL_ID: str = os.getenv("CHANNEL_ID", "")
-    CHANNEL_LINK: str = os.getenv("CHANNEL_LINK", "")
-    
-    # MongoDB
-    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "movie_bot")
-    
+    BOT_TOKEN="BOT_TOKEN"
+    ADMIN_IDS="5907118746"
+    CHANNEL_ID="-1001898063437"
+    CHANNEL_LINK=https:"//t.me/kinolar040"
+    MONGODB_URI=mongodb:"//localhost:27017"
+    MONGB_NAME=movie_bot
     # Redis
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", 6379))

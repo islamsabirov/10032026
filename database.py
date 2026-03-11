@@ -53,7 +53,6 @@ class DB:
                     joined    TEXT    DEFAULT '',
                     month     TEXT    DEFAULT ''
                 );
-                
                 CREATE TABLE IF NOT EXISTS movies(
                     id        INTEGER PRIMARY KEY AUTOINCREMENT,
                     file_id   TEXT    NOT NULL,
@@ -64,20 +63,18 @@ class DB:
                     channel_id   TEXT    DEFAULT '',
                     channel_msg_id INTEGER DEFAULT 0
                 );
-                
                 CREATE TABLE IF NOT EXISTS channels(
                     cid   TEXT PRIMARY KEY,
                     link  TEXT DEFAULT '',
                     title TEXT DEFAULT ''
                 );
-                
                 CREATE TABLE IF NOT EXISTS settings(
                     key   TEXT PRIMARY KEY,
                     value TEXT DEFAULT ''
                 );
             """)
             
-            # Yangi jadvallar - Kod orqali kino olish va majburiy obuna uchun
+            # Yangi jadvallar
             c.executescript("""
                 CREATE TABLE IF NOT EXISTS movie_codes(
                     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,33 +84,17 @@ class DB:
                     used_by   INTEGER DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     used_at   TIMESTAMP DEFAULT NULL,
-                    FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE
+                    FOREIGN KEY (movie_id) REFERENCES movies(id)
                 );
-                
                 CREATE INDEX IF NOT EXISTS idx_movie_codes_code ON movie_codes(code);
                 CREATE INDEX IF NOT EXISTS idx_movie_codes_movie_id ON movie_codes(movie_id);
-                CREATE INDEX IF NOT EXISTS idx_movie_codes_is_used ON movie_codes(is_used);
                 
                 CREATE TABLE IF NOT EXISTS subscribed_users(
                     user_id INTEGER PRIMARY KEY,
                     subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                
-                CREATE INDEX IF NOT EXISTS idx_subscribed_users_at ON subscribed_users(subscribed_at);
             """)
             
-            # Mavjud movies jadvaliga channel ustunlarini qo'shish (agar mavjud bo'lmasa)
-            try:
-                c.execute("ALTER TABLE movies ADD COLUMN channel_id TEXT DEFAULT ''")
-            except sqlite3.OperationalError:
-                pass  # Ustun allaqachon mavjud
-                
-            try:
-                c.execute("ALTER TABLE movies ADD COLUMN channel_msg_id INTEGER DEFAULT 0")
-            except sqlite3.OperationalError:
-                pass  # Ustun allaqachon mavjud
-            
-            # Sozlamalar
             for k, v in [
                 ("admins",       ""),
                 ("kino_ch",      ""),
@@ -165,14 +146,9 @@ class DB:
     def user_ids(self):
         return [r["id"] for r in self._all("SELECT id FROM users WHERE ban=0")]
 
-    def user_ban(self, uid):   
-        self._q("UPDATE users SET ban=1 WHERE id=?", (uid,))
-        
-    def user_unban(self, uid): 
-        self._q("UPDATE users SET ban=0 WHERE id=?", (uid,))
-        
-    def user_mark_left(self, uid): 
-        self._q("UPDATE users SET ban=2 WHERE id=?", (uid,))
+    def user_ban(self, uid):   self._q("UPDATE users SET ban=1 WHERE id=?", (uid,))
+    def user_unban(self, uid): self._q("UPDATE users SET ban=0 WHERE id=?", (uid,))
+    def user_mark_left(self, uid): self._q("UPDATE users SET ban=2 WHERE id=?", (uid,))
 
     def user_banned(self, uid):
         r = self._one("SELECT ban FROM users WHERE id=?", (uid,))
@@ -201,8 +177,8 @@ class DB:
     # ── Movies ──────────────────────────────────────────────
     def movie_add(self, file_id, photo_id, title, channel_id=None, channel_msg_id=None):
         cur = self._q("""
-            INSERT INTO movies(file_id, photo_id, title, added, channel_id, channel_msg_id)
-            VALUES(?, ?, ?, ?, ?, ?)
+            INSERT INTO movies(file_id,photo_id,title,added,channel_id,channel_msg_id)
+            VALUES(?,?,?,?,?,?)
         """, (
             file_id, photo_id, title,
             datetime.now().strftime("%d.%m.%Y"),
@@ -214,15 +190,13 @@ class DB:
         return self._one("SELECT * FROM movies WHERE id=?", (code,))
 
     def movie_del(self, code):
-        if not self.movie_get(code): 
-            return False
+        if not self.movie_get(code): return False
         self._q("DELETE FROM movies WHERE id=?", (code,))
         self.ss("del_count", str(int(self.sg("del_count", "0")) + 1))
         return True
 
     def movie_edit(self, code, title):
-        if not self.movie_get(code): 
-            return False
+        if not self.movie_get(code): return False
         self._q("UPDATE movies SET title=? WHERE id=?", (title, code))
         return True
 
@@ -252,7 +226,7 @@ class DB:
         """Kino kanal ma'lumotlarini yangilash"""
         self._q(
             "UPDATE movies SET channel_id=?, channel_msg_id=? WHERE id=?",
-            (str(channel_id), channel_msg_id, movie_id)
+            (channel_id, channel_msg_id, movie_id)
         )
 
     # ── Movie Codes (Kod orqali kino olish) ──────────────────────
@@ -277,17 +251,9 @@ class DB:
     def check_movie_code(self, code: str):
         """Kodni tekshirish va kino ma'lumotlarini qaytarish"""
         return self._one("""
-            SELECT 
-                mc.id as code_id, 
-                mc.movie_id, 
-                mc.is_used, 
-                mc.used_by,
-                m.file_id, 
-                m.photo_id, 
-                m.title, 
-                m.downloads,
-                m.channel_msg_id, 
-                m.channel_id
+            SELECT mc.id as code_id, mc.movie_id, mc.is_used, mc.used_by,
+                   m.file_id, m.photo_id, m.title, m.downloads,
+                   m.channel_msg_id, m.channel_id
             FROM movie_codes mc
             JOIN movies m ON mc.movie_id = m.id
             WHERE mc.code = ?
@@ -319,16 +285,13 @@ class DB:
 
     def get_all_codes_stats(self):
         """Barcha kodlar statistikasi"""
-        r = self._one("""
+        return self._one("""
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN is_used=0 THEN 1 ELSE 0 END) as unused,
                 SUM(CASE WHEN is_used=1 THEN 1 ELSE 0 END) as used
             FROM movie_codes
-        """)
-        if not r:
-            return {"total": 0, "unused": 0, "used": 0}
-        return r
+        """) or {"total": 0, "unused": 0, "used": 0}
 
     # ── Force Subscribe (Majburiy obuna) ────────────────────────
     def set_force_channel(self, channel_link: str) -> bool:
@@ -397,14 +360,12 @@ class DB:
         }
 
     # ── Channels ────────────────────────────────────────────
-    def ch_list(self): 
-        return self._all("SELECT * FROM channels")
+    def ch_list(self): return self._all("SELECT * FROM channels")
 
     def ch_add(self, cid, link, title=""):
         self._q("INSERT OR REPLACE INTO channels(cid,link,title) VALUES(?,?,?)", (str(cid), link, title))
 
-    def ch_del(self, cid): 
-        self._q("DELETE FROM channels WHERE cid=?", (str(cid),))
+    def ch_del(self, cid): self._q("DELETE FROM channels WHERE cid=?", (str(cid),))
 
     # ── Admins ──────────────────────────────────────────────
     def admins(self):
@@ -415,8 +376,7 @@ class DB:
         return ids
 
     def admin_add(self, uid):
-        if uid in self.admins(): 
-            return False
+        if uid in self.admins(): return False
         extra = [a for a in self.admins() if a != OWNER_ID] + [uid]
         self.ss("admins", ",".join(str(a) for a in extra))
         return True
@@ -425,11 +385,8 @@ class DB:
         extra = [a for a in self.admins() if a not in (OWNER_ID, uid)]
         self.ss("admins", ",".join(str(a) for a in extra))
 
-    def is_admin(self, uid):   
-        return uid in self.admins()
-    
-    def is_active(self):       
-        return self.sg("bot_active", "1") == "1"
+    def is_admin(self, uid):   return uid in self.admins()
+    def is_active(self):       return self.sg("bot_active", "1") == "1"
 
 
 db = DB()

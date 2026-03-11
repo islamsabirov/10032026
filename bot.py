@@ -4,6 +4,7 @@ import time
 import logging
 import asyncio
 import signal
+import fcntl
 from datetime import datetime
 from contextlib import suppress
 from dotenv import load_dotenv
@@ -44,29 +45,65 @@ except ValueError:
     log.critical("❌ OWNER_ID raqam bo'lishi kerak!")
     sys.exit(1)
 
-# 🔒 LOCK FILE - Bitta instance tekshirish (2️⃣)
+# =============================================
+# 🔥 MUHIM: CONFLICT XATOSINI TO'G'RILASH (2️⃣)
+# =============================================
 LOCK_FILE = "/tmp/bot.lock"
+CURRENT_PID = str(os.getpid())
 
-if os.path.exists(LOCK_FILE):
-    try:
-        with open(LOCK_FILE, "r") as f:
-            old_pid = f.read().strip()
-        # PID hali ishlayotganmi tekshirish
-        if os.path.exists(f"/proc/{old_pid}"):
-            log.critical(f"❌ Bot allaqachon ishlayapti! PID: {old_pid}")
-            log.critical("   Render'da faqat 1 ta instance bo'lishi kerak!")
-            sys.exit(1)
-        else:
-            # Eski lock fayl o'chirish (process o'lgan)
+def check_single_instance():
+    """Bot faqat 1 marta ishlashini ta'minlash"""
+    
+    # 1. Lock fayl borligini tekshirish
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                old_pid = f.read().strip()
+            
+            log.warning(f"⚠️ Eski lock fayl topildi! PID: {old_pid}")
+            
+            # 2. Eski processni o'ldirish (agar tirik bo'lsa)
+            try:
+                # SIGTERM yuborish
+                os.kill(int(old_pid), signal.SIGTERM)
+                log.info(f"📤 SIGTERM yuborildi PID: {old_pid}")
+                time.sleep(2)
+                
+                # Hali tirikligini tekshirish
+                try:
+                    os.kill(int(old_pid), 0)  # Signal 0 - mavjudligini tekshiradi
+                    # Tirik bo'lsa, SIGKILL bilan o'ldirish
+                    os.kill(int(old_pid), signal.SIGKILL)
+                    log.info(f"💀 SIGKILL yuborildi PID: {old_pid}")
+                    time.sleep(1)
+                except OSError:
+                    log.info(f"✅ Eski process o'ldi PID: {old_pid}")
+                    
+            except OSError as e:
+                log.info(f"ℹ️ Eski process mavjud emas: {e}")
+            
+            # 3. Eski lock faylni o'chirish
             os.remove(LOCK_FILE)
             log.info("✅ Eski lock fayl o'chirildi")
+            
+        except Exception as e:
+            log.warning(f"Lock faylni o'qishda xato: {e}")
+            try:
+                os.remove(LOCK_FILE)
+            except:
+                pass
+    
+    # 4. Yangi lock fayl yaratish
+    try:
+        with open(LOCK_FILE, "w") as f:
+            f.write(CURRENT_PID)
+        log.info(f"🔒 Yangi lock fayl yaratildi (PID: {CURRENT_PID})")
     except Exception as e:
-        log.warning(f"Lock fayl tekshirishda xato: {e}")
+        log.error(f"Lock fayl yaratishda xato: {e}")
+        sys.exit(1)
 
-# Yangi lock fayl yozish
-with open(LOCK_FILE, "w") as f:
-    f.write(str(os.getpid()))
-log.info(f"🔒 Lock fayl yaratildi (PID: {os.getpid()})")
+# LOCK tekshirishni ishga tushirish
+check_single_instance()
 
 # Importlar (environment variables tekshirilgandan keyin)
 from telegram import Update
@@ -129,6 +166,17 @@ async def error_handler(update: object, ctx) -> None:
         log.critical("❌ CONFLICT XATOSI: Bot allaqachon ishlayapti!")
         log.critical("   Render Dashboard → Services → Boshqa servicelarni o'chiring")
         log.critical("   Faqat 1 ta Background Worker qoldiring!")
+        
+        # Conflict bo'lsa, eski processni o'ldirish
+        try:
+            if os.path.exists(LOCK_FILE):
+                with open(LOCK_FILE, "r") as f:
+                    old_pid = f.read().strip()
+                if old_pid != CURRENT_PID:
+                    os.kill(int(old_pid), signal.SIGKILL)
+                    log.info(f"💀 Conflict sababli o'ldirildi: {old_pid}")
+        except:
+            pass
         return
     
     # Boshqa xatolar
@@ -194,11 +242,11 @@ async def health_check_server():
         async def handle(request):
             return web.Response(text="Bot is running!")
         
-        app = web.Application()
-        app.router.add_get('/', handle)
-        app.router.add_get('/health', handle)
+        web_app = web.Application()
+        web_app.router.add_get('/', handle)
+        web_app.router.add_get('/health', handle)
         
-        runner = web.AppRunner(app)
+        runner = web.AppRunner(web_app)
         await runner.setup()
         
         # Render 10000-portni kutadi
@@ -254,10 +302,14 @@ def setup_signal_handlers():
     
     signals = (signal.SIGTERM, signal.SIGINT)
     for sig in signals:
-        loop.add_signal_handler(
-            sig, 
-            lambda s=sig: asyncio.create_task(shutdown_handler(s))
-        )
+        try:
+            loop.add_signal_handler(
+                sig, 
+                lambda s=sig: asyncio.create_task(shutdown_handler(s))
+            )
+        except NotImplementedError:
+            log.warning("⚠️ Signal handler Windows'da ishlamaydi")
+            break
 
 
 async def run_bot():
@@ -315,9 +367,27 @@ async def run_bot():
                 log.critical("❌ CONFLICT XATOSI: Bot allaqachon ishlayapti!")
                 log.critical("   Render Dashboard → Services → Boshqa servicelarni o'chiring")
                 log.critical("   Faqat 1 ta Background Worker qoldiring!")
+                
+                # Conflict bo'lsa, qayta urinish
+                log.info("🔄 5 soniyadan keyin qayta uriniladi...")
+                await asyncio.sleep(5)
+                
+                # Lock faylni tekshirish va tozalash
+                if os.path.exists(LOCK_FILE):
+                    os.remove(LOCK_FILE)
+                
+                # Yangi lock fayl yaratish
+                with open(LOCK_FILE, "w") as f:
+                    f.write(CURRENT_PID)
+                
+                # Qayta urinish
+                await app.updater.start_polling(
+                    allowed_updates=Update.ALL_TYPES,
+                    drop_pending_updates=True,
+                )
             else:
                 log.error(f"Polling boshlashda xato: {e}")
-            raise
+                raise
         
         # Botni cheksiz ishga tushirish (shutdown signalini kutish)
         await shutdown_event.wait()
@@ -339,11 +409,7 @@ async def main():
     """Asosiy funksiya"""
     try:
         # Signal handlerlarni sozlash
-        try:
-            setup_signal_handlers()
-            log.info("✅ Signal handlerlar sozlandi")
-        except NotImplementedError:
-            log.warning("⚠️ Signal handler Windows'da ishlamaydi")
+        setup_signal_handlers()
         
         # Render uchun health check serverni ishga tushirish
         asyncio.create_task(health_check_server())

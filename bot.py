@@ -44,6 +44,30 @@ except ValueError:
     log.critical("❌ OWNER_ID raqam bo'lishi kerak!")
     sys.exit(1)
 
+# 🔒 LOCK FILE - Bitta instance tekshirish (2️⃣)
+LOCK_FILE = "/tmp/bot.lock"
+
+if os.path.exists(LOCK_FILE):
+    try:
+        with open(LOCK_FILE, "r") as f:
+            old_pid = f.read().strip()
+        # PID hali ishlayotganmi tekshirish
+        if os.path.exists(f"/proc/{old_pid}"):
+            log.critical(f"❌ Bot allaqachon ishlayapti! PID: {old_pid}")
+            log.critical("   Render'da faqat 1 ta instance bo'lishi kerak!")
+            sys.exit(1)
+        else:
+            # Eski lock fayl o'chirish (process o'lgan)
+            os.remove(LOCK_FILE)
+            log.info("✅ Eski lock fayl o'chirildi")
+    except Exception as e:
+        log.warning(f"Lock fayl tekshirishda xato: {e}")
+
+# Yangi lock fayl yozish
+with open(LOCK_FILE, "w") as f:
+    f.write(str(os.getpid()))
+log.info(f"🔒 Lock fayl yaratildi (PID: {os.getpid()})")
+
 # Importlar (environment variables tekshirilgandan keyin)
 from telegram import Update
 from telegram.ext import (
@@ -100,10 +124,11 @@ async def error_handler(update: object, ctx) -> None:
         log.warning(f"BadRequest: {err}")
         return
     
-    # Conflict xatosi (multiple instances)
+    # 🚨 CONFLICT XATOSI (4️⃣ - Polling exception log)
     if "Conflict" in str(err):
-        log.critical("❌ Conflict xatosi: Bot allaqachon ishlayapti!")
-        log.critical("   Render'da faqat 1 ta instance borligini tekshiring")
+        log.critical("❌ CONFLICT XATOSI: Bot allaqachon ishlayapti!")
+        log.critical("   Render Dashboard → Services → Boshqa servicelarni o'chiring")
+        log.critical("   Faqat 1 ta Background Worker qoldiring!")
         return
     
     # Boshqa xatolar
@@ -121,9 +146,14 @@ async def error_handler(update: object, ctx) -> None:
         pass
 
 
+# ✅ WEBHOOKNI O'CHIRISH (1️⃣)
 async def on_startup(app: Application) -> None:
-    """Bot ishga tushganda"""
+    """Bot ishga tushganda - webhook o'chirish"""
     try:
+        # Eski webhook o'chirish va kutilayotgan update'larni tozalash
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        log.info("✅ Webhook o'chirildi (conflict oldini olish uchun)")
+        
         me = await app.bot.get_me()
         log.info(f"✅ @{me.username} | Owner: {OWNER_ID}")
         
@@ -152,7 +182,7 @@ async def on_startup(app: Application) -> None:
         except TelegramError:
             pass
     except Exception as e:
-        log.error(f"Startup xatosi: {e}")
+        log.warning(f"Webhookni o'chirishda xato: {e}")
 
 
 # 🚀 RENDER UCHUN: Minimal web server (port xatosini oldini olish uchun)
@@ -183,7 +213,6 @@ async def health_check_server():
         
     except ImportError:
         log.warning("⚠️ aiohttp o'rnatilmagan, web server ishlamaydi")
-        # aiohttp bo'lmasa ham bot ishlayveradi
     except Exception as e:
         log.error(f"Web server xatosi: {e}")
 
@@ -201,6 +230,14 @@ async def shutdown_handler(sig):
             await app.shutdown()
         except Exception as e:
             log.error(f"Botni to'xtatishda xato: {e}")
+    
+    # Lock faylni o'chirish
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+            log.info("🔒 Lock fayl o'chirildi")
+    except Exception as e:
+        log.warning(f"Lock faylni o'chirishda xato: {e}")
     
     # Barcha tasklarni to'xtatish
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -228,21 +265,6 @@ async def run_bot():
     global app
     
     log.info("🔄 Bot ishga tushyapti...")
-    
-    # Lock fayl yaratish (instance tekshirish uchun)
-    lock_file = "/tmp/bot.lock"
-    if os.path.exists(lock_file):
-        log.warning("⚠️ Lock fayl mavjud, eski instance o'chganligini tekshiring")
-        try:
-            with open(lock_file, 'r') as f:
-                old_pid = f.read().strip()
-            log.warning(f"   Eski PID: {old_pid}")
-        except:
-            pass
-    
-    # Yangi lock fayl yozish
-    with open(lock_file, "w") as f:
-        f.write(str(os.getpid()))
     
     try:
         # Application yaratish
@@ -275,26 +297,34 @@ async def run_bot():
         await app.initialize()
         await app.start()
         
-        # Polling ni boshlash - drop_pending_updates=True muhim!
-        await app.updater.start_polling(
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,  # Kutilayotgan update'larni tozalaydi
-            read_timeout=30,
-            write_timeout=30,
-            connect_timeout=30,
-            pool_timeout=30,
-            error_callback=lambda e: log.error(f"Polling error: {e}"),
-        )
+        # 🚨 POLLINGNI TOZA BOSHLASH (3️⃣) - try-except bilan (4️⃣)
+        try:
+            await app.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,  # Kutilayotgan update'larni tozalaydi
+                read_timeout=30,
+                write_timeout=30,
+                connect_timeout=30,
+                pool_timeout=30,
+                error_callback=lambda e: log.error(f"Polling error: {e}"),
+            )
+            log.info("✅ Polling muvaffaqiyatli boshlandi")
+        except Exception as e:
+            # CONFLICT xatosi uchun maxsus log (4️⃣)
+            if "Conflict" in str(e):
+                log.critical("❌ CONFLICT XATOSI: Bot allaqachon ishlayapti!")
+                log.critical("   Render Dashboard → Services → Boshqa servicelarni o'chiring")
+                log.critical("   Faqat 1 ta Background Worker qoldiring!")
+            else:
+                log.error(f"Polling boshlashda xato: {e}")
+            raise
         
         # Botni cheksiz ishga tushirish (shutdown signalini kutish)
         await shutdown_event.wait()
         
     except Exception as e:
-        log.error(f"Polling xatosi: {e}")
-        if "Conflict" in str(e):
-            log.critical("❌ CONFLICT XATOSI: Bot allaqachon ishlayapti!")
-            log.critical("   Render Dashboard → Services → Boshqa servicelarni o'chiring")
-            log.critical("   Faqat 1 ta Background Worker qoldiring!")
+        log.error(f"Bot ishga tushirishda xato: {e}")
+        raise
     finally:
         if app:
             try:
@@ -303,28 +333,34 @@ async def run_bot():
                 await app.shutdown()
             except:
                 pass
-        
-        # Lock faylni o'chirish
-        try:
-            if os.path.exists(lock_file):
-                os.remove(lock_file)
-        except:
-            pass
 
 
 async def main():
     """Asosiy funksiya"""
-    # Signal handlerlarni sozlash
     try:
-        setup_signal_handlers()
-    except NotImplementedError:
-        log.warning("⚠️ Signal handler Windows'da ishlamaydi")
-    
-    # Render uchun health check serverni ishga tushirish
-    asyncio.create_task(health_check_server())
-    
-    # Botni ishga tushirish
-    await run_bot()
+        # Signal handlerlarni sozlash
+        try:
+            setup_signal_handlers()
+            log.info("✅ Signal handlerlar sozlandi")
+        except NotImplementedError:
+            log.warning("⚠️ Signal handler Windows'da ishlamaydi")
+        
+        # Render uchun health check serverni ishga tushirish
+        asyncio.create_task(health_check_server())
+        
+        # Botni ishga tushirish
+        await run_bot()
+        
+    except Exception as e:
+        log.critical(f"❌ Kritik xato: {e}", exc_info=True)
+    finally:
+        # Lock faylni o'chirish (har ehtimolga qarshi)
+        try:
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+                log.info("🔒 Lock fayl o'chirildi (main finally)")
+        except:
+            pass
 
 
 if __name__ == "__main__":
@@ -332,7 +368,19 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         log.info("⛔ Bot to'xtatildi (Ctrl+C)")
+        # Lock faylni o'chirish
+        try:
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+        except:
+            pass
         sys.exit(0)
     except Exception as e:
         log.critical(f"❌ Kritik xato: {e}", exc_info=True)
+        # Lock faylni o'chirish
+        try:
+            if os.path.exists(LOCK_FILE):
+                os.remove(LOCK_FILE)
+        except:
+            pass
         sys.exit(1)

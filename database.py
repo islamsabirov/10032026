@@ -1,392 +1,490 @@
-import sqlite3, threading, os, logging, random, string
-from datetime import datetime
-from pathlib import Path
+"""
+Async MongoDB database manager with connection pooling and indexes.
+"""
 
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH  = DATA_DIR / "kinopro.db"
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-_lock    = threading.Lock()
-log      = logging.getLogger(__name__)
+import asyncio
+from typing import Optional, Dict, Any, List, Union
+from datetime import datetime, timedelta
+from bson import ObjectId
+from motor.motor_asyncio import (
+    AsyncIOMotorClient,
+    AsyncIOMotorDatabase,
+    AsyncIOMotorCollection
+)
+
+from config import config
+from utils.logger import logger
 
 
-class DB:
-    def __init__(self):
-        self._local = threading.local()
-        self._init()
-
-    def _conn(self):
-        if not getattr(self._local, "c", None):
-            c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-            c.row_factory = sqlite3.Row
-            c.execute("PRAGMA journal_mode=WAL")
-            self._local.c = c
-        return self._local.c
-
-    def _q(self, sql, p=()):
-        with _lock:
-            cur = self._conn().execute(sql, p)
-            self._conn().commit()
-            return cur
-
-    def _one(self, sql, p=()):
-        with _lock:
-            r = self._conn().execute(sql, p).fetchone()
-            return dict(r) if r else None
-
-    def _all(self, sql, p=()):
-        with _lock:
-            return [dict(r) for r in self._conn().execute(sql, p).fetchall()]
-
-    def _init(self):
-        with _lock:
-            c = self._conn()
-            c.executescript("""
-                CREATE TABLE IF NOT EXISTS users(
-                    id        INTEGER PRIMARY KEY,
-                    name      TEXT    DEFAULT '',
-                    username  TEXT    DEFAULT '',
-                    step      TEXT    DEFAULT '',
-                    sdata     TEXT    DEFAULT '',
-                    ban       INTEGER DEFAULT 0,
-                    joined    TEXT    DEFAULT '',
-                    month     TEXT    DEFAULT ''
-                );
-                CREATE TABLE IF NOT EXISTS movies(
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    file_id   TEXT    NOT NULL,
-                    photo_id  TEXT    DEFAULT '',
-                    title     TEXT    DEFAULT '',
-                    added     TEXT    DEFAULT '',
-                    downloads INTEGER DEFAULT 0,
-                    channel_id   TEXT    DEFAULT '',
-                    channel_msg_id INTEGER DEFAULT 0
-                );
-                CREATE TABLE IF NOT EXISTS channels(
-                    cid   TEXT PRIMARY KEY,
-                    link  TEXT DEFAULT '',
-                    title TEXT DEFAULT ''
-                );
-                CREATE TABLE IF NOT EXISTS settings(
-                    key   TEXT PRIMARY KEY,
-                    value TEXT DEFAULT ''
-                );
-            """)
+class Database:
+    """
+    MongoDB database manager with connection pooling and automatic reconnection
+    """
+    
+    _instance: Optional['Database'] = None
+    _client: Optional[AsyncIOMotorClient] = None
+    _db: Optional[AsyncIOMotorDatabase] = None
+    
+    def __new__(cls):
+        """Singleton pattern"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    async def connect(self):
+        """Establish database connection and create indexes"""
+        try:
+            # Create MongoDB client with connection pooling
+            self._client = AsyncIOMotorClient(
+                config.MONGODB_URI,
+                maxPoolSize=50,
+                minPoolSize=10,
+                maxIdleTimeMS=30000,
+                connectTimeoutMS=5000,
+                serverSelectionTimeoutMS=5000
+            )
             
-            # Yangi jadvallar
-            c.executescript("""
-                CREATE TABLE IF NOT EXISTS movie_codes(
-                    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                    movie_id  INTEGER NOT NULL,
-                    code      TEXT UNIQUE NOT NULL,
-                    is_used   INTEGER DEFAULT 0,
-                    used_by   INTEGER DEFAULT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    used_at   TIMESTAMP DEFAULT NULL,
-                    FOREIGN KEY (movie_id) REFERENCES movies(id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_movie_codes_code ON movie_codes(code);
-                CREATE INDEX IF NOT EXISTS idx_movie_codes_movie_id ON movie_codes(movie_id);
-                
-                CREATE TABLE IF NOT EXISTS subscribed_users(
-                    user_id INTEGER PRIMARY KEY,
-                    subscribed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
+            # Test connection
+            await self._client.admin.command('ping')
             
-            for k, v in [
-                ("admins",       ""),
-                ("kino_ch",      ""),
-                ("reklama",      ""),
-                ("bot_active",   "1"),
-                ("del_count",    "0"),
-                ("force_channel",""),
-                ("start_text",
-                 "👋 Assalomu alaykum, {name}!\n\n"
-                 "🎬 Kino kodini yuboring va kinoni oling.\n"
-                 "🔢 Masalan: <code>1</code>"),
-            ]:
-                c.execute("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)", (k, v))
-            c.commit()
-
-    # ── Settings ────────────────────────────────────────────
-    def sg(self, k, d=""):
-        r = self._one("SELECT value FROM settings WHERE key=?", (k,))
-        return r["value"] if r else d
-
-    def ss(self, k, v):
-        self._q("INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)", (k, v))
-
-    # ── Users ───────────────────────────────────────────────
-    def user_add(self, uid, name, uname):
-        if self._one("SELECT id FROM users WHERE id=?", (uid,)):
+            # Get database
+            self._db = self._client[config.MONGODB_DB_NAME]
+            
+            # Create indexes
+            await self._create_indexes()
+            
+            logger.info("✅ MongoDB connected successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ MongoDB connection failed: {e}")
+            raise
+    
+    async def _create_indexes(self):
+        """Create all database indexes for performance"""
+        
+        # Users collection indexes
+        users = self._db.users
+        await users.create_index("user_id", unique=True)
+        await users.create_index("username")
+        await users.create_index("subscription_expire")
+        await users.create_index("created_at")
+        
+        # Movies collection indexes
+        movies = self._db.movies
+        await movies.create_index("movie_code", unique=True)
+        await movies.create_index("message_id")
+        await movies.create_index("file_id")
+        await movies.create_index("request_count", -1)  # For most requested
+        await movies.create_index("created_at", -1)     # For newest
+        
+        # Payments collection indexes
+        payments = self._db.payments
+        await payments.create_index("payment_id", unique=True)
+        await payments.create_index("user_id")
+        await payments.create_index("status")
+        await payments.create_index("created_at", -1)
+        
+        # Statistics collection indexes
+        stats = self._db.statistics
+        await stats.create_index("date", unique=True)
+        await stats.create_index("movie_code")
+        
+        # Channels collection (mandatory subscription)
+        channels = self._db.channels
+        await channels.create_index("channel_id", unique=True)
+        await channels.create_index("is_mandatory")
+        
+        logger.info("✅ Database indexes created")
+    
+    @property
+    def db(self) -> AsyncIOMotorDatabase:
+        """Get database instance"""
+        if self._db is None:
+            raise RuntimeError("Database not connected. Call connect() first.")
+        return self._db
+    
+    # ==================== User Operations ====================
+    
+    async def get_or_create_user(self, user_id: int, username: str = None, 
+                                  first_name: str = None, last_name: str = None) -> Dict:
+        """
+        Get user by ID or create if not exists
+        """
+        users = self.db.users
+        
+        user = await users.find_one({"user_id": user_id})
+        
+        if not user:
+            # Create new user
+            user = {
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "created_at": datetime.utcnow(),
+                "last_active": datetime.utcnow(),
+                "subscription_type": "free",
+                "subscription_start": None,
+                "subscription_expire": None,
+                "daily_requests": 0,
+                "last_request_date": datetime.utcnow().date().isoformat(),
+                "total_requests": 0,
+                "is_banned": False,
+                "language": "uz"
+            }
+            await users.insert_one(user)
+            logger.info(f"New user registered", user_id=user_id, username=username)
+        
+        return user
+    
+    async def update_user(self, user_id: int, update_data: Dict) -> bool:
+        """Update user data"""
+        users = self.db.users
+        result = await users.update_one(
+            {"user_id": user_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
+    async def increment_user_requests(self, user_id: int) -> bool:
+        """Increment user's daily request count"""
+        users = self.db.users
+        today = datetime.utcnow().date().isoformat()
+        
+        # Check if it's a new day
+        user = await users.find_one({"user_id": user_id})
+        if user and user.get("last_request_date") != today:
+            # Reset daily counter
+            await users.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "daily_requests": 1,
+                        "last_request_date": today
+                    },
+                    "$inc": {"total_requests": 1}
+                }
+            )
+        else:
+            # Increment existing counter
+            await users.update_one(
+                {"user_id": user_id},
+                {
+                    "$inc": {"daily_requests": 1, "total_requests": 1},
+                    "$set": {"last_active": datetime.utcnow()}
+                }
+            )
+        return True
+    
+    async def get_user_daily_requests(self, user_id: int) -> int:
+        """Get user's daily request count"""
+        users = self.db.users
+        user = await users.find_one({"user_id": user_id})
+        if not user:
+            return 0
+        
+        # Reset if new day
+        today = datetime.utcnow().date().isoformat()
+        if user.get("last_request_date") != today:
+            await users.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "daily_requests": 0,
+                        "last_request_date": today
+                    }
+                }
+            )
+            return 0
+        
+        return user.get("daily_requests", 0)
+    
+    async def add_premium(self, user_id: int, days: int) -> bool:
+        """Add premium subscription to user"""
+        users = self.db.users
+        now = datetime.utcnow()
+        
+        user = await users.find_one({"user_id": user_id})
+        if not user:
             return False
-        now = datetime.now()
-        self._q(
-            "INSERT INTO users(id,name,username,joined,month) VALUES(?,?,?,?,?)",
-            (uid, name, uname or "",
-             now.strftime("%d.%m.%Y %H:%M"), now.strftime("%m.%Y")),
-        )
-        return True
-
-    def user_count(self):
-        r = self._one("SELECT COUNT(*) c FROM users"); return r["c"] if r else 0
-
-    def user_count_today(self):
-        t = datetime.now().strftime("%d.%m.%Y")
-        r = self._one("SELECT COUNT(*) c FROM users WHERE joined LIKE ?", (f"{t}%",))
-        return r["c"] if r else 0
-
-    def user_count_month(self):
-        m = datetime.now().strftime("%m.%Y")
-        r = self._one("SELECT COUNT(*) c FROM users WHERE month=?", (m,))
-        return r["c"] if r else 0
-
-    def user_ids(self):
-        return [r["id"] for r in self._all("SELECT id FROM users WHERE ban=0")]
-
-    def user_ban(self, uid):   self._q("UPDATE users SET ban=1 WHERE id=?", (uid,))
-    def user_unban(self, uid): self._q("UPDATE users SET ban=0 WHERE id=?", (uid,))
-    def user_mark_left(self, uid): self._q("UPDATE users SET ban=2 WHERE id=?", (uid,))
-
-    def user_banned(self, uid):
-        r = self._one("SELECT ban FROM users WHERE id=?", (uid,))
-        return bool(r and r["ban"] == 1)
-
-    def user_left_count(self):
-        r = self._one("SELECT COUNT(*) c FROM users WHERE ban=2"); return r["c"] if r else 0
-
-    def user_list(self, limit=30):
-        return self._all(f"SELECT id,name,username,ban,joined FROM users ORDER BY rowid DESC LIMIT {limit}")
-
-    def user_search(self, q):
-        return self._all(
-            "SELECT * FROM users WHERE CAST(id AS TEXT) LIKE ? OR LOWER(name) LIKE ? OR LOWER(username) LIKE ?",
-            (f"%{q}%", f"%{q.lower()}%", f"%{q.lower()}%"),
-        )
-
-    # ── Steps ────────────────────────────────────────────────
-    def step_get(self, uid):
-        r = self._one("SELECT step,sdata FROM users WHERE id=?", (uid,))
-        return (r["step"] or "", r["sdata"] or "") if r else ("", "")
-
-    def step_set(self, uid, step="", data=""):
-        self._q("UPDATE users SET step=?,sdata=? WHERE id=?", (step, data, uid))
-
-    # ── Movies ──────────────────────────────────────────────
-    def movie_add(self, file_id, photo_id, title, channel_id=None, channel_msg_id=None):
-        cur = self._q("""
-            INSERT INTO movies(file_id,photo_id,title,added,channel_id,channel_msg_id)
-            VALUES(?,?,?,?,?,?)
-        """, (
-            file_id, photo_id, title,
-            datetime.now().strftime("%d.%m.%Y"),
-            channel_id, channel_msg_id
-        ))
-        return cur.lastrowid
-
-    def movie_get(self, code):
-        return self._one("SELECT * FROM movies WHERE id=?", (code,))
-
-    def movie_del(self, code):
-        if not self.movie_get(code): return False
-        self._q("DELETE FROM movies WHERE id=?", (code,))
-        self.ss("del_count", str(int(self.sg("del_count", "0")) + 1))
-        return True
-
-    def movie_edit(self, code, title):
-        if not self.movie_get(code): return False
-        self._q("UPDATE movies SET title=? WHERE id=?", (title, code))
-        return True
-
-    def movie_count(self):
-        r = self._one("SELECT COUNT(*) c FROM movies"); return r["c"] if r else 0
-
-    def movie_list(self, limit=20):
-        return self._all(f"SELECT * FROM movies ORDER BY id DESC LIMIT {limit}")
-
-    def movie_random(self):
-        r = self._one("SELECT id FROM movies ORDER BY RANDOM() LIMIT 1")
-        return r["id"] if r else 0
-
-    def movie_downloaded(self, code):
-        self._q("UPDATE movies SET downloads=downloads+1 WHERE id=?", (code,))
-
-    def movie_search(self, q):
-        return self._all(
-            "SELECT * FROM movies WHERE LOWER(title) LIKE ? ORDER BY id DESC",
-            (f"%{q.lower()}%",),
-        )
-
-    def movie_top(self, n=10):
-        return self._all(f"SELECT * FROM movies ORDER BY downloads DESC LIMIT {n}")
-    
-    def update_movie_channel(self, movie_id, channel_id, channel_msg_id):
-        """Kino kanal ma'lumotlarini yangilash"""
-        self._q(
-            "UPDATE movies SET channel_id=?, channel_msg_id=? WHERE id=?",
-            (channel_id, channel_msg_id, movie_id)
-        )
-
-    # ── Movie Codes (Kod orqali kino olish) ──────────────────────
-    def add_movie_code(self, movie_id: int, code: str = None) -> str:
-        """Kino uchun kod qo'shish"""
-        if code is None:
-            # 6 xonali random kod generatsiya qilish
-            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         
-        # Kod mavjudligini tekshirish
-        existing = self._one("SELECT id FROM movie_codes WHERE code=?", (code,))
+        # Calculate new expiration
+        if user.get("subscription_expire") and user["subscription_expire"] > now:
+            # Extend existing subscription
+            expire = user["subscription_expire"] + timedelta(days=days)
+        else:
+            # New subscription
+            expire = now + timedelta(days=days)
+        
+        result = await users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "subscription_type": "premium",
+                    "subscription_start": now,
+                    "subscription_expire": expire
+                }
+            }
+        )
+        
+        if result.modified_count:
+            logger.info(f"Premium added to user", user_id=user_id, days=days)
+            return True
+        return False
+    
+    async def remove_premium(self, user_id: int) -> bool:
+        """Remove premium subscription"""
+        users = self.db.users
+        result = await users.update_one(
+            {"user_id": user_id},
+            {
+                "$set": {
+                    "subscription_type": "free",
+                    "subscription_expire": None
+                }
+            }
+        )
+        return result.modified_count > 0
+    
+    async def check_premium(self, user_id: int) -> bool:
+        """Check if user has active premium"""
+        users = self.db.users
+        user = await users.find_one({"user_id": user_id})
+        
+        if not user or user.get("subscription_type") != "premium":
+            return False
+        
+        # Check expiration
+        expire = user.get("subscription_expire")
+        if expire and expire < datetime.utcnow():
+            # Subscription expired
+            await users.update_one(
+                {"user_id": user_id},
+                {"$set": {"subscription_type": "free"}}
+            )
+            return False
+        
+        return True
+    
+    # ==================== Movie Operations ====================
+    
+    async def add_movie(self, movie_code: int, message_id: int, file_id: str, 
+                        file_type: str, movie_name: str, caption: str = None) -> bool:
+        """Add new movie to database"""
+        movies = self.db.movies
+        
+        # Check if code exists
+        existing = await movies.find_one({"movie_code": movie_code})
         if existing:
-            # Kod mavjud bo'lsa, yangi generatsiya qilish
-            return self.add_movie_code(movie_id)
+            return False
         
-        self._q(
-            "INSERT INTO movie_codes(movie_id, code) VALUES(?,?)",
-            (movie_id, code)
-        )
-        return code
-
-    def check_movie_code(self, code: str):
-        """Kodni tekshirish va kino ma'lumotlarini qaytarish"""
-        return self._one("""
-            SELECT mc.id as code_id, mc.movie_id, mc.is_used, mc.used_by,
-                   m.file_id, m.photo_id, m.title, m.downloads,
-                   m.channel_msg_id, m.channel_id
-            FROM movie_codes mc
-            JOIN movies m ON mc.movie_id = m.id
-            WHERE mc.code = ?
-        """, (code,))
-
-    def use_movie_code(self, code: str, user_id: int) -> bool:
-        """Kodni ishlatilgan deb belgilash"""
-        cur = self._q("""
-            UPDATE movie_codes 
-            SET is_used = 1, used_by = ?, used_at = CURRENT_TIMESTAMP
-            WHERE code = ? AND is_used = 0
-        """, (user_id, code))
-        return cur.rowcount > 0
-
-    def get_movie_codes(self, movie_id: int, limit: int = 100) -> list:
-        """Kino uchun barcha kodlarni olish"""
-        return self._all("""
-            SELECT id, code, is_used, used_by, created_at, used_at
-            FROM movie_codes
-            WHERE movie_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (movie_id, limit))
-
-    def delete_movie_code(self, code_id: int) -> bool:
-        """Kodni o'chirish"""
-        cur = self._q("DELETE FROM movie_codes WHERE id=?", (code_id,))
-        return cur.rowcount > 0
-
-    def get_all_codes_stats(self):
-        """Barcha kodlar statistikasi"""
-        return self._one("""
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN is_used=0 THEN 1 ELSE 0 END) as unused,
-                SUM(CASE WHEN is_used=1 THEN 1 ELSE 0 END) as used
-            FROM movie_codes
-        """) or {"total": 0, "unused": 0, "used": 0}
-
-    # ── Force Subscribe (Majburiy obuna) ────────────────────────
-    def set_force_channel(self, channel_link: str) -> bool:
-        """Majburiy obuna kanalini sozlash"""
-        self.ss("force_channel", channel_link)
-        return True
-
-    def get_force_channel(self) -> str:
-        """Majburiy obuna kanalini olish"""
-        return self.sg("force_channel", "")
-
-    def add_subscribed_user(self, user_id: int) -> bool:
-        """Obuna bo'lgan foydalanuvchini belgilash"""
-        self._q(
-            "INSERT OR REPLACE INTO subscribed_users(user_id) VALUES(?)",
-            (user_id,)
-        )
-        return True
-
-    def is_user_subscribed(self, user_id: int) -> bool:
-        """Foydalanuvchi obuna bo'lganligini tekshirish"""
-        r = self._one("SELECT 1 FROM subscribed_users WHERE user_id=?", (user_id,))
-        return r is not None
-
-    def remove_subscribed_user(self, user_id: int) -> bool:
-        """Foydalanuvchini obuna ro'yxatidan o'chirish"""
-        cur = self._q("DELETE FROM subscribed_users WHERE user_id=?", (user_id,))
-        return cur.rowcount > 0
-    
-    def get_subscribed_users_count(self) -> int:
-        """Obuna foydalanuvchilar soni"""
-        r = self._one("SELECT COUNT(*) as count FROM subscribed_users")
-        return r["count"] if r else 0
-
-    # ── Cache (Keshni tozalash) ────────────────────────────────
-    def clear_cache(self):
-        """Vaqtinchalik ma'lumotlarni tozalash"""
-        with _lock:
-            c = self._conn()
-            # Eski kodlarni tozalash (30 kundan eski va ishlatilmagan)
-            c.execute("""
-                DELETE FROM movie_codes 
-                WHERE is_used = 0 
-                AND julianday('now') - julianday(created_at) > 30
-            """)
-            code_deleted = c.total_changes
-            
-            # Eski obuna ma'lumotlarini tozalash (7 kundan eski)
-            c.execute("""
-                DELETE FROM subscribed_users 
-                WHERE julianday('now') - julianday(subscribed_at) > 7
-            """)
-            sub_deleted = c.total_changes - code_deleted
-            
-            c.commit()
-            return code_deleted + sub_deleted
-
-    def get_cache_stats(self) -> dict:
-        """Kesh statistikasini olish"""
-        codes = self.get_all_codes_stats()
-        subs = self.get_subscribed_users_count()
-        
-        return {
-            "codes": codes,
-            "subscribed_users": subs
+        movie = {
+            "movie_code": movie_code,
+            "message_id": message_id,
+            "file_id": file_id,
+            "file_type": file_type,
+            "movie_name": movie_name,
+            "caption": caption,
+            "created_at": datetime.utcnow(),
+            "request_count": 0,
+            "is_active": True
         }
-
-    # ── Channels ────────────────────────────────────────────
-    def ch_list(self): return self._all("SELECT * FROM channels")
-
-    def ch_add(self, cid, link, title=""):
-        self._q("INSERT OR REPLACE INTO channels(cid,link,title) VALUES(?,?,?)", (str(cid), link, title))
-
-    def ch_del(self, cid): self._q("DELETE FROM channels WHERE cid=?", (str(cid),))
-
-    # ── Admins ──────────────────────────────────────────────
-    def admins(self):
-        raw = self.sg("admins", "")
-        ids = [int(x) for x in raw.split(",") if x.strip().isdigit()]
-        if OWNER_ID and OWNER_ID not in ids:
-            ids.insert(0, OWNER_ID)
-        return ids
-
-    def admin_add(self, uid):
-        if uid in self.admins(): return False
-        extra = [a for a in self.admins() if a != OWNER_ID] + [uid]
-        self.ss("admins", ",".join(str(a) for a in extra))
+        
+        await movies.insert_one(movie)
+        logger.info(f"Movie added", movie_code=movie_code, movie_name=movie_name)
         return True
+    
+    async def get_movie(self, movie_code: int) -> Optional[Dict]:
+        """Get movie by code"""
+        movies = self.db.movies
+        movie = await movies.find_one({"movie_code": movie_code, "is_active": True})
+        
+        if movie:
+            # Increment request count
+            await movies.update_one(
+                {"_id": movie["_id"]},
+                {"$inc": {"request_count": 1}}
+            )
+            
+            # Update statistics
+            await self.increment_movie_stat(movie_code)
+        
+        return movie
+    
+    async def delete_movie(self, movie_code: int) -> bool:
+        """Soft delete movie"""
+        movies = self.db.movies
+        result = await movies.update_one(
+            {"movie_code": movie_code},
+            {"$set": {"is_active": False}}
+        )
+        return result.modified_count > 0
+    
+    async def get_all_movies(self, page: int = 1, limit: int = 20) -> List[Dict]:
+        """Get all active movies with pagination"""
+        movies = self.db.movies
+        skip = (page - 1) * limit
+        
+        cursor = movies.find({"is_active": True}).sort("created_at", -1).skip(skip).limit(limit)
+        return await cursor.to_list(length=limit)
+    
+    async def search_movies(self, query: str) -> List[Dict]:
+        """Search movies by name"""
+        movies = self.db.movies
+        cursor = movies.find({
+            "is_active": True,
+            "movie_name": {"$regex": query, "$options": "i"}
+        }).sort("request_count", -1).limit(20)
+        
+        return await cursor.to_list(length=20)
+    
+    async def get_most_requested(self, limit: int = 10) -> List[Dict]:
+        """Get most requested movies"""
+        movies = self.db.movies
+        cursor = movies.find({"is_active": True}).sort("request_count", -1).limit(limit)
+        return await cursor.to_list(length=limit)
+    
+    async def movie_exists(self, movie_code: int) -> bool:
+        """Check if movie exists"""
+        movies = self.db.movies
+        count = await movies.count_documents({"movie_code": movie_code, "is_active": True})
+        return count > 0
+    
+    # ==================== Statistics ====================
+    
+    async def increment_movie_stat(self, movie_code: int):
+        """Increment movie request statistic for today"""
+        stats = self.db.statistics
+        today = datetime.utcnow().date().isoformat()
+        
+        await stats.update_one(
+            {"date": today, "movie_code": movie_code},
+            {"$inc": {"requests": 1}},
+            upsert=True
+        )
+    
+    async def get_daily_stats(self, date: str = None) -> Dict:
+        """Get daily statistics"""
+        stats = self.db.statistics
+        if not date:
+            date = datetime.utcnow().date().isoformat()
+        
+        pipeline = [
+            {"$match": {"date": date}},
+            {
+                "$group": {
+                    "_id": None,
+                    "total_requests": {"$sum": "$requests"},
+                    "unique_movies": {"$sum": 1}
+                }
+            }
+        ]
+        
+        result = await stats.aggregate(pipeline).to_list(1)
+        return result[0] if result else {"total_requests": 0, "unique_movies": 0}
+    
+    async def get_total_users(self) -> int:
+        """Get total user count"""
+        users = self.db.users
+        return await users.count_documents({})
+    
+    async def get_today_users(self) -> int:
+        """Get users joined today"""
+        users = self.db.users
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        return await users.count_documents({
+            "created_at": {"$gte": today_start}
+        })
+    
+    async def get_active_users(self, days: int = 7) -> int:
+        """Get active users in last X days"""
+        users = self.db.users
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        
+        return await users.count_documents({
+            "last_active": {"$gte": cutoff}
+        })
+    
+    # ==================== Channel Operations ====================
+    
+    async def add_mandatory_channel(self, channel_id: str, channel_title: str, 
+                                     channel_link: str) -> bool:
+        """Add mandatory subscription channel"""
+        channels = self.db.channels
+        
+        existing = await channels.find_one({"channel_id": channel_id})
+        if existing:
+            return False
+        
+        channel = {
+            "channel_id": channel_id,
+            "channel_title": channel_title,
+            "channel_link": channel_link,
+            "is_mandatory": True,
+            "added_at": datetime.utcnow()
+        }
+        
+        await channels.insert_one(channel)
+        return True
+    
+    async def remove_mandatory_channel(self, channel_id: str) -> bool:
+        """Remove mandatory channel"""
+        channels = self.db.channels
+        result = await channels.delete_one({"channel_id": channel_id})
+        return result.deleted_count > 0
+    
+    async def get_mandatory_channels(self) -> List[Dict]:
+        """Get all mandatory channels"""
+        channels = self.db.channels
+        cursor = channels.find({"is_mandatory": True})
+        return await cursor.to_list(length=100)
+    
+    # ==================== Payment Operations ====================
+    
+    async def create_payment(self, user_id: int, amount: float, 
+                             payment_method: str, plan_days: int) -> str:
+        """Create payment record"""
+        payments = self.db.payments
+        payment_id = f"PAY_{user_id}_{int(datetime.utcnow().timestamp())}"
+        
+        payment = {
+            "payment_id": payment_id,
+            "user_id": user_id,
+            "amount": amount,
+            "payment_method": payment_method,
+            "plan_days": plan_days,
+            "status": "pending",
+            "created_at": datetime.utcnow()
+        }
+        
+        await payments.insert_one(payment)
+        return payment_id
+    
+    async def complete_payment(self, payment_id: str) -> bool:
+        """Mark payment as completed"""
+        payments = self.db.payments
+        
+        result = await payments.update_one(
+            {"payment_id": payment_id},
+            {
+                "$set": {
+                    "status": "completed",
+                    "completed_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.modified_count:
+            # Get payment details
+            payment = await payments.find_one({"payment_id": payment_id})
+            if payment:
+                # Add premium to user
+                await self.add_premium(payment["user_id"], payment["plan_days"])
+            return True
+        
+        return False
 
-    def admin_del(self, uid):
-        extra = [a for a in self.admins() if a not in (OWNER_ID, uid)]
-        self.ss("admins", ",".join(str(a) for a in extra))
 
-    def is_admin(self, uid):   return uid in self.admins()
-    def is_active(self):       return self.sg("bot_active", "1") == "1"
-
-
-db = DB()
+# Create global database instance
+db = Database()

@@ -1,18 +1,8 @@
-"""
-╔══════════════════════════════════════════════════════════════╗
-║   🎬  KinoProBot — Professional Telegram Bot                 ║
-║   ✅  24/7 Polling — Render / VPS / Lokal                    ║
-║   ✅  Admin panel, Statistika, Kanallar, Xabarnoma           ║
-║   ✅  Majburiy obuna, Reklama, Kino kanal                    ║
-╚══════════════════════════════════════════════════════════════╝
-"""
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 import time
 import logging
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -78,13 +68,16 @@ async def error_handler(update: object, ctx) -> None:
     # Foydalanuvchi botni bloklagan
     if isinstance(err, Forbidden):
         if update and hasattr(update, "effective_user") and update.effective_user:
-            db.user_mark_left(update.effective_user.id)
+            try:
+                db.user_mark_left(update.effective_user.id)
+            except:
+                pass
         return
     
     # Flood limit
     if isinstance(err, RetryAfter):
         log.warning(f"Flood limit: {err.retry_after}s")
-        time.sleep(err.retry_after)
+        await asyncio.sleep(err.retry_after)
         return
     
     # Tarmoq xatolari
@@ -114,28 +107,58 @@ async def error_handler(update: object, ctx) -> None:
 
 async def on_startup(app: Application) -> None:
     """Bot ishga tushganda"""
-    me = await app.bot.get_me()
-    log.info(f"✅ @{me.username} | Owner: {OWNER_ID}")
-    log.info(f"👥 {db.user_count()} user | 🎬 {db.movie_count()} kino")
-    
-    # Owner ga xabar
     try:
-        await app.bot.send_message(
-            OWNER_ID,
-            f"🟢 <b>KinoProBot ishga tushdi!</b>\n\n"
-            f"🤖 @{me.username}\n"
-            f"👥 Foydalanuvchilar: <b>{db.user_count()}</b>\n"
-            f"🎬 Kinolar: <b>{db.movie_count()}</b>\n"
-            f"📡 Polling 24/7\n\n"
-            f"📌 /start yuboring — panel ochiladi",
-            parse_mode="HTML",
-        )
-    except TelegramError:
-        pass
+        me = await app.bot.get_me()
+        log.info(f"✅ @{me.username} | Owner: {OWNER_ID}")
+        log.info(f"👥 {db.user_count()} user | 🎬 {db.movie_count()} kino")
+        
+        # Owner ga xabar
+        try:
+            await app.bot.send_message(
+                OWNER_ID,
+                f"🟢 <b>KinoProBot ishga tushdi!</b>\n\n"
+                f"🤖 @{me.username}\n"
+                f"👥 Foydalanuvchilar: <b>{db.user_count()}</b>\n"
+                f"🎬 Kinolar: <b>{db.movie_count()}</b>\n"
+                f"📡 Polling 24/7\n\n"
+                f"📌 /start yuboring — panel ochiladi",
+                parse_mode="HTML",
+            )
+        except TelegramError:
+            pass
+    except Exception as e:
+        log.error(f"Startup xatosi: {e}")
 
 
-def main():
-    """Asosiy funksiya"""
+# 🚀 RENDER UCHUN: Minimal web server (port xatosini oldini olish uchun)
+async def health_check_server():
+    """Render health check uchun minimal web server"""
+    try:
+        from aiohttp import web
+        
+        async def handle(request):
+            return web.Response(text="Bot is running!")
+        
+        app = web.Application()
+        app.router.add_get('/', handle)
+        app.router.add_get('/health', handle)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        
+        # Render 10000-portni kutadi
+        port = int(os.getenv("PORT", 10000))
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+        log.info(f"✅ Health check server running on port {port}")
+    except ImportError:
+        log.warning("⚠️ aiohttp o'rnatilmagan, web server ishlamaydi")
+    except Exception as e:
+        log.error(f"Web server xatosi: {e}")
+
+
+async def run_bot():
+    """Botni asinxron ishga tushirish"""
     log.info("🔄 Bot ishga tushyapti...")
     
     # Application yaratish
@@ -147,12 +170,12 @@ def main():
     )
 
     # Handlerlarni qo'shish
-    app.add_handler(CommandHandler("start",  cmd_start))
-    app.add_handler(CommandHandler("help",   cmd_help))
-    app.add_handler(CommandHandler("rand",   cmd_rand))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("rand", cmd_rand))
     app.add_handler(CommandHandler("search", cmd_search))
-    app.add_handler(CommandHandler("panel",  cmd_start))
-    app.add_handler(CommandHandler("admin",  cmd_start))
+    app.add_handler(CommandHandler("panel", cmd_start))
+    app.add_handler(CommandHandler("admin", cmd_start))
     app.add_handler(CallbackQueryHandler(cb_handler))
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & ~filters.COMMAND,
@@ -164,20 +187,44 @@ def main():
 
     log.info("🔄 Polling boshlandi (24/7)...")
     
+    # Botni ishga tushirish - PTB 21.6 uchun to'g'ri parametrlar
+    await app.initialize()
+    await app.start()
+    
+    # Polling ni boshlash
+    try:
+        await app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30,
+        )
+        
+        # Botni cheksiz ishga tushirish
+        while True:
+            await asyncio.sleep(3600)  # 1 soat
+            log.debug("Bot ishlayapti...")
+            
+    except Exception as e:
+        log.error(f"Polling xatosi: {e}")
+    finally:
+        await app.stop()
+
+
+async def main():
+    """Asosiy funksiya"""
+    # Render uchun health check serverni ishga tushirish
+    asyncio.create_task(health_check_server())
+    
     # Botni ishga tushirish
-    app.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        read_timeout=30,
-        write_timeout=30,
-        connect_timeout=30,
-        pool_timeout=30,
-    )
+    await run_bot()
 
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main())
     except KeyboardInterrupt:
         log.info("⛔ Bot to'xtatildi (Ctrl+C)")
         sys.exit(0)

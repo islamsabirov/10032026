@@ -89,7 +89,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"🎬 Kinolar: <b>{format_number(db.movie_count())}</b>\n"
             f"🔑 Kodlar: <b>{format_number(stats['codes']['total'])}</b>\n"
             f"🔒 Majburiy obuna: <b>{'Faol' if db.get_force_channel() else 'O\'chirilgan'}</b>\n"
-            f'🟢 Bot: <b>{"Yoqilgan" if db.is_active() else "Ochirilgan"}</b>'
+            f"🟢 Bot: <b>{'Yoqilgan' if db.is_active() else 'Ochirilgan'}</b>",
             parse_mode="HTML",
             reply_markup=kb_panel(),
         )

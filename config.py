@@ -13,39 +13,56 @@ load_dotenv()
 
 class Config:
     """Central configuration class"""
-    
+
+    # -------------------
     # Telegram
-    BOT_TOKEN = "BOT_TOKEN"
+    # -------------------
+    BOT_TOKEN: str = os.getenv("BOT_TOKEN", "BOT_TOKEN")
+    ADMIN_IDS: List[int] = [5907118746]
 
-    ADMIN_IDS = [5907118746]
+    CHANNEL_ID: str = "-1001898063437"
+    CHANNEL_LINK: str = "https://t.me/kinolar040"
 
-    CHANNEL_ID = "-1001898063437"
-    CHANNEL_LINK = "https://t.me/kinolar040"
+    # -------------------
+    # MongoDB
+    # -------------------
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "movie_bot")  # MONGB_NAME o‘rniga
 
-    MONGODB_URI = "mongodb://localhost:27017"
-    MONGB_NAME = "movie_bot"
+    # -------------------
     # Redis
+    # -------------------
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", 6379))
     REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD") or None
     REDIS_DB: int = int(os.getenv("REDIS_DB", 0))
-    
+
+    # -------------------
     # Subscription
+    # -------------------
     FREE_DAILY_LIMIT: int = int(os.getenv("FREE_DAILY_LIMIT", 5))
     PREMIUM_DAILY_LIMIT: int = int(os.getenv("PREMIUM_DAILY_LIMIT", 999999))
-    
+
+    # -------------------
     # Rate Limiting
+    # -------------------
     RATE_LIMIT_REQUESTS: int = int(os.getenv("RATE_LIMIT_REQUESTS", 1))
     RATE_LIMIT_PERIOD: int = int(os.getenv("RATE_LIMIT_PERIOD", 5))
-    
+
+    # -------------------
     # Logging
+    # -------------------
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_FILE: str = os.getenv("LOG_FILE", "logs/bot.log")
-    
+
+    # -------------------
     # Payment (Optional)
+    # -------------------
     PAYMENT_PROVIDER_TOKEN: Optional[str] = os.getenv("PAYMENT_PROVIDER_TOKEN") or None
-    
-    # Application
+
+    # -------------------
+    # Application Info
+    # -------------------
     APP_NAME: str = "MovieBot"
     VERSION: str = "1.0.0"
     

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""🎬 KinoProBot — Professional Handlers (Yangilangan)"""
+"""🎬 KinoProBot — Professional Handlers (Xatolar tuzatilgan)"""
 
 import logging
 import re
@@ -80,7 +80,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     # Admin uchun maxsus panel
-if db.is_admin(u.id):
+    if db.is_admin(u.id):
         stats = db.get_cache_stats()
         await msg.reply_text(
             f"👋 <b>Xush kelibsiz, {u.first_name}!</b>\n\n"
@@ -93,7 +93,6 @@ if db.is_admin(u.id):
             parse_mode="HTML",
             reply_markup=kb_panel(),
         )
-        return
         return
 
     # Oddiy foydalanuvchi uchun majburiy obuna tekshirish
@@ -368,7 +367,7 @@ async def msg_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     # KODNI ANIQLASH VA QAYTA ISHLASH
     if not adm:
-        # 1. Raqamli kod (5-6 xonali)
+        # 1. Raqamli kod (4-6 xonali)
         if txt.isdigit() and 4 <= len(txt) <= 6:
             if not await check_sub(bot, u.id):
                 return
@@ -2120,6 +2119,98 @@ async def _send_movie(update: Update, ctx: ContextTypes.DEFAULT_TYPE, code: int)
 # ============================================================================
 #  STEP HANDLER (ESKI STEP'LAR UCHUN)
 # ============================================================================
+
+async def handle_add_movie_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE, sdata: str):
+    """Kino kod qo'shish step handleri"""
+    u = update.effective_user
+    txt = update.message.text.strip().upper()
+    
+    if not db.is_admin(u.id):
+        return
+    
+    movie_id = int(sdata)
+    movie = db.movie_get(movie_id)
+    
+    if txt == '/CANCEL':
+        db.step_set(u.id, "", "")
+        await update.message.reply_text(
+            "❌ Bekor qilindi.",
+            reply_markup=kb_panel()
+        )
+        return
+    
+    if not re.match(r'^[A-Z0-9]{6}$', txt):
+        await update.message.reply_text(
+            "❌ <b>Noto'g'ri kod formati!</b>\n\n"
+            "Kod 6 ta belgidan iborat bo'lishi kerak.\n"
+            "Faqat lotin harflari va raqamlar ishlatiladi.\n\n"
+            "Qayta urinib ko'ring yoki /cancel yuboring.",
+            parse_mode="HTML"
+        )
+        return
+    
+    new_code = db.add_movie_code(movie_id, txt)
+    
+    if new_code:
+        await update.message.reply_text(
+            f"✅ <b>Kod muvaffaqiyatli qo'shildi!</b>\n\n"
+            f"🎬 Kino: <b>{movie['title']}</b>\n"
+            f"🔑 Kod: <code>{new_code}</code>",
+            parse_mode="HTML",
+            reply_markup=kb_panel()
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ <b>Kod qo'shishda xatolik!</b>\n\n"
+            f"Kod band bo'lishi mumkin.",
+            parse_mode="HTML",
+            reply_markup=kb_panel()
+        )
+    
+    db.step_set(u.id, "", "")
+
+
+async def handle_delete_code(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Kod o'chirish step handleri"""
+    u = update.effective_user
+    txt = update.message.text.strip()
+    
+    if not db.is_admin(u.id):
+        return
+    
+    if txt == '/CANCEL':
+        db.step_set(u.id, "", "")
+        await update.message.reply_text(
+            "❌ Bekor qilindi.",
+            reply_markup=kb_panel()
+        )
+        return
+    
+    if not txt.isdigit():
+        await update.message.reply_text(
+            "❌ <b>Noto'g'ri format!</b>\n\n"
+            "Kod ID sini raqam ko'rinishida yuboring.",
+            parse_mode="HTML"
+        )
+        return
+    
+    code_id = int(txt)
+    
+    if db.delete_movie_code(code_id):
+        await update.message.reply_text(
+            "✅ <b>Kod o'chirildi!</b>",
+            parse_mode="HTML",
+            reply_markup=kb_panel()
+        )
+    else:
+        await update.message.reply_text(
+            "❌ <b>Kod o'chirilmadi!</b>",
+            parse_mode="HTML",
+            reply_markup=kb_panel()
+        )
+    
+    db.step_set(u.id, "", "")
+
 
 async def _do_step(update: Update, ctx: ContextTypes.DEFAULT_TYPE, step: str, sdata: str) -> bool:
     """Eski step'larni qayta ishlash"""

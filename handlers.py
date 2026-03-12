@@ -82,14 +82,16 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     # Admin uchun maxsus panel
     if db.is_admin(u.id):
         stats = db.get_cache_stats()
+        force_status = "Faol" if db.get_force_channel() else "O'chirilgan"
+        bot_status = "Yoqilgan" if db.is_active() else "Ochirilgan"
         await msg.reply_text(
             f"👋 <b>Xush kelibsiz, {u.first_name}!</b>\n\n"
             f"🖥 <b>Admin Panel</b>\n\n"
             f"👥 Foydalanuvchilar: <b>{format_number(db.user_count())}</b>\n"
             f"🎬 Kinolar: <b>{format_number(db.movie_count())}</b>\n"
             f"🔑 Kodlar: <b>{format_number(stats['codes']['total'])}</b>\n"
-            f"🔒 Majburiy obuna: <b>{'Faol' if db.get_force_channel() else 'O\'chirilgan'}</b>\n"
-            f"🟢 Bot: <b>{'Yoqilgan' if db.is_active() else 'Ochirilgan'}</b>",
+            f"🔒 Majburiy obuna: <b>{force_status}</b>\n"
+            f"🟢 Bot: <b>{bot_status}</b>",
             parse_mode="HTML",
             reply_markup=kb_panel(),
         )
@@ -1222,9 +1224,10 @@ async def admin_force_menu(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     current = db.get_force_channel()
     stats = db.get_cache_stats()
     
+    current_display = current if current else "❌ O'rnatilmagan"
     await q.edit_message_text(
         f"🔒 <b>Majburiy obuna sozlamalari</b>\n\n"
-        f"📢 Joriy kanal: {current if current else '❌ O\'rnatilmagan'}\n"
+        f"📢 Joriy kanal: {current_display}\n"
         f"👥 Obuna bo'lganlar: {format_number(stats['subscribed_users'])}\n\n"
         f"⚠️ <i>Faqat Telegram kanal linklari qo'llab-quvvatlanadi!</i>\n"
         f"Masalan: <code>https://t.me/kanal_nomi</code>\n\n"
@@ -1386,7 +1389,8 @@ async def admin_force_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     channel = db.get_force_channel()
     
     text = f"📊 <b>Majburiy obuna statistikasi</b>\n\n"
-    text += f"📢 Kanal: {channel if channel else '❌ O\'rnatilmagan'}\n"
+    channel_display = channel if channel else "❌ O'rnatilmagan"
+    text += f"📢 Kanal: {channel_display}\n"
     text += f"👥 Obuna foydalanuvchilar: {format_number(stats['subscribed_users'])}\n"
     text += f"📈 Jami foydalanuvchilar: {format_number(db.user_count())}\n"
     text += f"📊 Foiz: {stats['subscribed_users']/db.user_count()*100:.1f}%" if db.user_count() > 0 else "0%"

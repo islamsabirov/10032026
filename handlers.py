@@ -80,7 +80,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
     # Admin uchun maxsus panel
-    if db.is_admin(u.id):
+if db.is_admin(u.id):
         stats = db.get_cache_stats()
         await msg.reply_text(
             f"👋 <b>Xush kelibsiz, {u.first_name}!</b>\n\n"
@@ -89,10 +89,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             f"🎬 Kinolar: <b>{format_number(db.movie_count())}</b>\n"
             f"🔑 Kodlar: <b>{format_number(stats['codes']['total'])}</b>\n"
             f"🔒 Majburiy obuna: <b>{'Faol' if db.get_force_channel() else 'O\'chirilgan'}</b>\n"
-            f"🟢 Bot: <b>{'Yoqilgan' if db.is_active() else 'Ochirilgan'}</b>"
+            f"🟢 Bot: <b>{'Yoqilgan' if db.is_active() else 'Ochirilgan'}</b>",
             parse_mode="HTML",
             reply_markup=kb_panel(),
         )
+        return
         return
 
     # Oddiy foydalanuvchi uchun majburiy obuna tekshirish

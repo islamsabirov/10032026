@@ -2,7 +2,7 @@
 Configuration management module.
 Loads and validates all environment variables.
 """
-
+ 
 import os
 from typing import List, Optional
 from dotenv import load_dotenv

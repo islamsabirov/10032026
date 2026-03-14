@@ -1,24 +1,29 @@
+# bot/config.py
 import os
 from dataclasses import dataclass
-
+from typing import List, Optional
 from dotenv import load_dotenv
 
-
+# .env faylini yuklash
 load_dotenv()
 
 
 @dataclass
 class Settings:
     bot_token: str
-    admin_ids: list[int]
+    admin_ids: List[int]
     required_channel: str
     db_url: str
 
 
-def _parse_admin_ids(raw: str | None) -> list[int]:
+def _parse_admin_ids(raw: Optional[str]) -> List[int]:
+    """
+    ADMIN_IDS ni stringdan list[int] ga aylantiradi.
+    Masalan: "12345,67890" -> [12345, 67890]
+    """
     if not raw:
         return []
-    ids: list[int] = []
+    ids: List[int] = []
     for part in raw.split(","):
         part = part.strip()
         if not part:
@@ -31,7 +36,10 @@ def _parse_admin_ids(raw: str | None) -> list[int]:
 
 
 def get_settings() -> Settings:
-    token = os.getenv("BOT_TOKEN", "")
+    """
+    .env fayldagi parametrlarni o‘qib Settings ob’ektini yaratadi
+    """
+    token = os.getenv("BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("BOT_TOKEN is not set in environment")
 
@@ -47,5 +55,5 @@ def get_settings() -> Settings:
     )
 
 
+# Global o‘zgaruvchi sifatida sozlamalar
 settings = get_settings()
-

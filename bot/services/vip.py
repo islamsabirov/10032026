@@ -7,7 +7,6 @@ from bot.db.models import Payment, User
 
 
 async def refresh_vip_flag(session: AsyncSession, user: User) -> User:
-    """vip_until tugagan bo‘lsa, is_vip ni yangilaydi."""
     now = datetime.now(timezone.utc)
     if user.vip_until and user.vip_until < now:
         user.is_vip = False
@@ -17,7 +16,6 @@ async def refresh_vip_flag(session: AsyncSession, user: User) -> User:
 
 
 async def set_vip(session: AsyncSession, user: User, days: int) -> User:
-    """Foydalanuvchini VIP qiladi yoki VIP muddatini uzaytiradi."""
     now = datetime.now(timezone.utc)
     base_time = user.vip_until if user.vip_until and user.vip_until > now else now
     user.is_vip = True
@@ -35,4 +33,3 @@ async def get_payment_by_id(session: AsyncSession, payment_id: int) -> Payment |
     stmt = select(Payment).where(Payment.id == payment_id)
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
-

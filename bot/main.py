@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
@@ -21,9 +22,12 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     logger.info("Bot ishga tushmoqda...")
     
+    # TO'G'IRLANGAN: default parametr bilan
     bot = Bot(
         token=settings.bot_token,
-        parse_mode=ParseMode.HTML
+        default=DefaultBotProperties(
+            parse_mode=ParseMode.HTML
+        )
     )
     
     dp = Dispatcher(storage=MemoryStorage())

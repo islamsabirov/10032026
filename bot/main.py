@@ -1,6 +1,7 @@
 ```python
 import asyncio
 import logging
+import gc
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -21,11 +22,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# ---------------- CACHE CLEANER ----------------
+async def cache_cleaner():
+    while True:
+        await asyncio.sleep(1800)  # 30 minut
+        gc.collect()
+        logger.info("🧹 Cache va RAM tozalandi")
+
+
 # ---------------- MAIN FUNCTION ----------------
 async def main() -> None:
     logger.info("🚀 Bot ishga tushmoqda...")
 
-    # Bot yaratish (aiogram 3.7+ uchun to'g'ri usul)
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(
@@ -33,20 +41,22 @@ async def main() -> None:
         )
     )
 
-    # Dispatcher yaratish
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Routerlarni ulash
+    # Routerlar
     dp.include_router(user_menu_router)
     dp.include_router(codes_router)
     dp.include_router(vip_router)
     dp.include_router(admin_router)
 
-    # Database ishga tushirish
+    # Database
     logger.info("📂 Database ishga tushmoqda...")
     await init_db()
 
-    # Polling boshlash
+    # Cache cleaner task
+    asyncio.create_task(cache_cleaner())
+
+    # Polling
     logger.info("📡 Bot polling boshladi...")
     await dp.start_polling(bot)
 

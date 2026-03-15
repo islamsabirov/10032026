@@ -1,4 +1,3 @@
-```python
 import asyncio
 import logging
 import gc
@@ -68,4 +67,3 @@ if __name__ == "__main__":
 
     except (KeyboardInterrupt, SystemExit):
         logger.info("⛔ Bot to'xtatildi")
-```

@@ -1,8 +1,8 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, Message, FSInputFile
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from sqlalchemy import select, delete
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot import keyboards
@@ -53,26 +53,22 @@ async def cb_admin_stats(callback: CallbackQuery) -> None:
     async with AsyncSessionMaker() as session:
         stats = await get_basic_stats(session)
         
-        # Oxirgi 24 soat statistikasi
         from datetime import datetime, timedelta
         now = datetime.utcnow()
         yesterday = now - timedelta(days=1)
         week_ago = now - timedelta(days=7)
         month_ago = now - timedelta(days=30)
         
-        # Oxirgi 24 soatda qo'shilganlar
         new_users_24h = await session.execute(
-            select(func.count()).where(User.created_at >= yesterday)
+            select(func.count()).select_from(User).where(User.created_at >= yesterday)
         )
         new_users_24h = new_users_24h.scalar() or 0
         
-        # Oxirgi 24 soatda faol
         active_24h = await session.execute(
             select(func.count()).select_from(CodeUsage).where(CodeUsage.used_at >= yesterday)
         )
         active_24h = active_24h.scalar() or 0
         
-        # Yuklanishlar
         downloads_24h = await session.execute(
             select(func.count()).select_from(CodeUsage).where(CodeUsage.used_at >= yesterday)
         )
@@ -88,7 +84,6 @@ async def cb_admin_stats(callback: CallbackQuery) -> None:
         )
         downloads_30d = downloads_30d.scalar() or 0
         
-        # Kinolar soni
         movies_count = await session.execute(
             select(func.count()).select_from(Movie).where(Movie.is_active.is_(True))
         )
@@ -99,22 +94,18 @@ async def cb_admin_stats(callback: CallbackQuery) -> None:
         f"👥 Obunachilar soni: {stats['total_users']} ta\n"
         f"✅ Faol obunachilar: {stats['total_users'] - stats.get('left_users', 0)} ta\n"
         f"📤 Tark etganlar: {stats.get('left_users', 0)} ta\n\n"
-        
         f"📈 <b>Obunachilar qo'shilishi:</b>\n"
         f"• Oxirgi 24 soat: +{new_users_24h} obunachi\n"
         f"• Oxirgi 7 kun: +{stats.get('new_users_7d', 0)} obunachi\n"
         f"• Oxirgi 30 kun: +{stats.get('new_users_30d', 0)} obunachi\n\n"
-        
         f"⚡️ <b>Faollik:</b>\n"
         f"• Oxirgi 24 soatda faol: {active_24h} ta\n"
         f"• Oxirgi 7 kun faol: {stats.get('active_7d', 0)} ta\n"
         f"• Oxirgi 30 kun faol: {stats.get('active_30d', 0)} ta\n\n"
-        
         f"📥 <b>Yuklanishlar:</b>\n"
         f"• Oxirgi 24 soat: {downloads_24h} ta\n"
         f"• Oxirgi 7 kun: {downloads_7d} ta\n"
         f"• Oxirgi 30 kun: {downloads_30d} ta\n\n"
-        
         f"🎬 Kinolar soni: {movies_count} ta\n"
         f"👑 Aktiv VIP foydalanuvchilar: {stats['active_vip_users']} ta"
     )
@@ -227,7 +218,6 @@ async def process_movie_code(message: Message, state: FSMContext) -> None:
     code = message.text.strip()
     
     async with AsyncSessionMaker() as session:
-        # Kod bandligini tekshirish
         existing = await session.execute(
             select(Movie).where(Movie.code == code)
         )
@@ -251,7 +241,6 @@ async def process_movie_content(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     code = data.get("code")
     
-    # Video yoki linkni saqlash
     file_id = None
     link = None
     
@@ -266,7 +255,7 @@ async def process_movie_content(message: Message, state: FSMContext) -> None:
     
     await state.update_data(file_id=file_id, link=link)
     
-    # Ko'rinish turini so'rash
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     keyboard = InlineKeyboardBuilder()
     keyboard.row(
         InlineKeyboardButton(text="🌍 Hammaga", callback_data="movie:visibility:public"),
@@ -297,7 +286,7 @@ async def process_movie_visibility(callback: CallbackQuery, state: FSMContext) -
     async with AsyncSessionMaker() as session:
         movie = Movie(
             code=code,
-            title=code,  # Vaqtinchalik nom, keyin tahrirlanadi
+            title=code,
             channel_post_link=link,
             file_id=file_id,
             is_active=True,
@@ -307,7 +296,6 @@ async def process_movie_visibility(callback: CallbackQuery, state: FSMContext) -
         await session.commit()
         await session.refresh(movie)
     
-    # Muvaffaqiyatli yuklandi
     text = (
         f"✅ <b>Kino muvaffaqiyatli yuklandi!</b>\n\n"
         f"Kino kodi: {code}\n"
@@ -390,7 +378,6 @@ async def process_edit_code(message: Message, state: FSMContext) -> None:
     new_code = message.text.strip()
     
     async with AsyncSessionMaker() as session:
-        # Kod bandligini tekshirish
         existing = await session.execute(
             select(Movie).where(Movie.code == new_code, Movie.id != movie_id)
         )
@@ -450,7 +437,6 @@ async def cb_toggle_movie_visibility(callback: CallbackQuery) -> None:
             await session.commit()
             await callback.answer(f"Ko'rinish: {'✅ Ochiq' if movie.is_public else '🔒 Yopiq'}")
     
-    # Ma'lumotlarni yangilash
     await cb_movie_view(callback)
 
 
@@ -490,6 +476,7 @@ async def process_delete_movie_code(message: Message, state: FSMContext) -> None
             f"Quyidagi tugma orqali kinoni o'chirishingiz mumkin."
         )
         
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
         keyboard = InlineKeyboardBuilder()
         keyboard.row(
             InlineKeyboardButton(
@@ -655,7 +642,6 @@ async def cb_settings_payments(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "payments:auto")
 async def cb_payments_auto(callback: CallbackQuery) -> None:
-    # Avtomatik to'lov sozlamalari
     text = (
         "🤖 <b>Avto To'lov Sozlamalari</b>\n\n"
         "API Kalit: ❌ Kiritilmagan\n"
@@ -663,6 +649,7 @@ async def cb_payments_auto(callback: CallbackQuery) -> None:
         "API kalitini kiritish orqali avtomatik to'lov tizimini ulashingiz mumkin."
     )
     
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     keyboard = InlineKeyboardBuilder()
     keyboard.row(
         InlineKeyboardButton(text="🔑 API Key kiritish", callback_data="payments:api_key"),
@@ -691,6 +678,7 @@ async def cb_settings_premium(callback: CallbackQuery) -> None:
         "Quyidagi tugmalardan foydalanib Premium sozlamalarini boshqaring."
     )
     
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     keyboard = InlineKeyboardBuilder()
     keyboard.row(
         InlineKeyboardButton(text="🔄 Holat o'zgartirish", callback_data="premium:toggle"),
@@ -726,6 +714,7 @@ async def cb_admin_admins(callback: CallbackQuery) -> None:
     else:
         text += "Adminlar mavjud emas."
     
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
     keyboard = InlineKeyboardBuilder()
     keyboard.row(
         InlineKeyboardButton(text="➕ Admin qo'shish", callback_data="admins:add"),
@@ -794,4 +783,9 @@ async def cb_payment_action(callback: CallbackQuery) -> None:
             try:
                 await callback.bot.send_message(
                     user.telegram_id,
-                    "❌ To'lov rad etildi. Iltimos, admin bilan bog'lan
+                    "❌ To'lov rad etildi. Iltimos, admin bilan bog'laning.",
+                )
+            except:
+                pass
+            
+            await callback.answer("❌ To'lov rad etildi")

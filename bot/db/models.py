@@ -34,8 +34,11 @@ class Movie(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255))
+    info: Mapped[str | None] = mapped_column(Text, nullable=True)
     channel_post_link: Mapped[str] = mapped_column(Text)
+    file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
@@ -71,3 +74,16 @@ class CodeUsage(Base):
     user: Mapped["User"] = relationship(back_populates="code_usages")
     movie: Mapped["Movie"] = relationship(back_populates="code_usages")
 
+
+class Channel(Base):
+    __tablename__ = "channels"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    link: Mapped[str] = mapped_column(String(255), unique=True)
+    channel_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    channel_type: Mapped[str] = mapped_column(String(50), default="public")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )

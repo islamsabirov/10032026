@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from aiogram import Bot, Dispatcher
@@ -21,7 +22,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# Render uchun PORT ochib turadigan health server
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -30,19 +30,17 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def run_health_server():
-    port = 10000
+    port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     server.serve_forever()
 
 
-async def main() -> None:
+async def main():
     logger.info("Bot ishga tushmoqda...")
 
     bot = Bot(
         token=settings.bot_token,
-        default=DefaultBotProperties(
-            parse_mode=ParseMode.HTML
-        )
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
 
     dp = Dispatcher(storage=MemoryStorage())
@@ -61,9 +59,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        # Health serverni alohida threadda ishga tushiramiz
         threading.Thread(target=run_health_server).start()
-
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot to'xtatildi")

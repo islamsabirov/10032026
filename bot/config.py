@@ -1,10 +1,9 @@
-# bot/config.py
 import os
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
+
 from dotenv import load_dotenv
 
-# .env faylini yuklash
 load_dotenv()
 
 
@@ -12,18 +11,14 @@ load_dotenv()
 class Settings:
     bot_token: str
     admin_ids: List[int]
-    required_channel: str
     db_url: str
+    required_channels: List[str]  # Bir nechta kanal qo'shish imkoniyati
 
 
-def _parse_admin_ids(raw: Optional[str]) -> List[int]:
-    """
-    ADMIN_IDS ni stringdan list[int] ga aylantiradi.
-    Masalan: "12345,67890" -> [12345, 67890]
-    """
+def _parse_admin_ids(raw: str | None) -> List[int]:
     if not raw:
         return []
-    ids: List[int] = []
+    ids = []
     for part in raw.split(","):
         part = part.strip()
         if not part:
@@ -35,25 +30,27 @@ def _parse_admin_ids(raw: Optional[str]) -> List[int]:
     return ids
 
 
+def _parse_channels(raw: str | None) -> List[str]:
+    if not raw:
+        return []
+    return [ch.strip() for ch in raw.split(",") if ch.strip()]
+
+
 def get_settings() -> Settings:
-    """
-    .env fayldagi parametrlarni o‘qib Settings ob’ektini yaratadi
-    """
-    token = os.getenv("BOT_TOKEN", "").strip()
+    token = os.getenv("BOT_TOKEN", "")
     if not token:
         raise RuntimeError("BOT_TOKEN is not set in environment")
 
     admin_ids_raw = os.getenv("ADMIN_IDS", "")
-    required_channel = os.getenv("REQUIRED_CHANNEL", "").strip()
+    required_channels_raw = os.getenv("REQUIRED_CHANNELS", "")
     db_url = os.getenv("DB_URL", "sqlite+aiosqlite:///./bot.db")
 
     return Settings(
         bot_token=token,
         admin_ids=_parse_admin_ids(admin_ids_raw),
-        required_channel=required_channel,
+        required_channels=_parse_channels(required_channels_raw),
         db_url=db_url,
     )
 
 
-# Global o‘zgaruvchi sifatida sozlamalar
 settings = get_settings()

@@ -31,4 +31,3 @@ async def register_code_usage(
     session.add(usage)
     await session.flush()
     return usage
-

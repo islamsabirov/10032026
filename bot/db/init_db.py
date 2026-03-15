@@ -1,11 +1,12 @@
-from sqlalchemy.ext.asyncio import AsyncEngine
+from .base import AsyncSessionMaker, Base, engine, get_session
+from .init_db import init_db
+from . import models
 
-from .base import Base, engine
-
-
-async def init_db(db_engine: AsyncEngine | None = None) -> None:
-    """Create all database tables."""
-    eng = db_engine or engine
-    async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+__all__ = [
+    "AsyncSessionMaker",
+    "Base",
+    "engine",
+    "get_session",
+    "init_db",
+    "models",
+]

@@ -13,6 +13,7 @@ from bot.db import init_db
 from bot.handlers import admin_router, codes_router, user_menu_router, vip_router
 
 
+# LOGGING
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -20,10 +21,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# WEBHOOK
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = f"{settings.webhook_url}{WEBHOOK_PATH}"
 
 
+# BOT
 bot = Bot(
     token=settings.bot_token,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
@@ -32,12 +35,14 @@ bot = Bot(
 dp = Dispatcher(storage=MemoryStorage())
 
 
+# ROUTERS
 dp.include_router(user_menu_router)
 dp.include_router(codes_router)
 dp.include_router(vip_router)
 dp.include_router(admin_router)
 
 
+# STARTUP
 async def on_startup(app: web.Application):
 
     logger.info("Bot ishga tushmoqda...")
@@ -51,6 +56,7 @@ async def on_startup(app: web.Application):
     logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
 
 
+# SHUTDOWN
 async def on_shutdown(app: web.Application):
 
     logger.info("Bot o'chmoqda...")
@@ -62,6 +68,7 @@ async def on_shutdown(app: web.Application):
     await dp.storage.close()
 
 
+# APP CREATE
 def create_app():
 
     app = web.Application()
@@ -82,6 +89,7 @@ def create_app():
     return app
 
 
+# RUN SERVER
 if __name__ == "__main__":
 
     port = int(os.getenv("PORT", 8080))

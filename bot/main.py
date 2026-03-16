@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # WEBHOOK
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = f"{settings.webhook_url}{WEBHOOK_PATH}"
+WEBHOOK_URL = f"{settings.webhook_url}/webhook"
 
 
 # BOT
@@ -64,7 +64,6 @@ async def on_shutdown(app: web.Application):
     await bot.delete_webhook(drop_pending_updates=True)
 
     await bot.session.close()
-
     await dp.storage.close()
 
 
@@ -82,7 +81,7 @@ def create_app():
     app.on_shutdown.append(on_shutdown)
 
     async def health(request):
-        return web.Response(text="OK")
+        return web.Response(text="Bot ishlayapti")
 
     app.router.add_get("/", health)
 
@@ -92,8 +91,8 @@ def create_app():
 # RUN SERVER
 if __name__ == "__main__":
 
-    port = int(os.getenv("PORT", 8080))
+    PORT = int(os.getenv("PORT", 8080))
 
-    logger.info(f"Server {port} portda ishga tushdi")
+    logger.info(f"Server {PORT} portda ishga tushdi")
 
-    web.run_app(create_app(), host="0.0.0.0", port=port)
+    web.run_app(create_app(), host="0.0.0.0", port=PORT)

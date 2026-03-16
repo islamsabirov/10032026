@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-from config import settings
+from bot.config import settings  # <= Shu joyni tuzatish, bot papkasi ichida
 
 # Ma'lumotlar bazasi engine
 engine = create_async_engine(
@@ -22,6 +22,9 @@ Base = declarative_base()
 
 
 async def get_session() -> AsyncSession:
-    """Dependency: DB session olish"""
+    """
+    Dependency: DB session olish
+    Async generator qilib yozildi
+    """
     async with AsyncSessionMaker() as session:
-        return session
+        yield session  # return emas, yield async generator

@@ -3,7 +3,7 @@ import os
 import logging
 from aiohttp import web
 
-# Python path-ga root va bot papkalarni qo‘shish
+# Root va bot papkalarni Python path-ga qo‘shish
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.dirname(BASE_DIR))
@@ -21,12 +21,13 @@ from handlers import admin_router, codes_router, user_menu_router, vip_router
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 logger = logging.getLogger(__name__)
 
+# ---------------- Webhook ----------------
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL = f"{settings.webhook_url}{WEBHOOK_PATH}"
+WEBHOOK_URL_FULL = f"{settings.webhook_url}{WEBHOOK_PATH}"
 
 bot = Bot(
     token=settings.bot_token,
@@ -36,8 +37,8 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # ---------------- Startup / Shutdown ----------------
 async def on_startup(app: web.Application):
-    await bot.set_webhook(WEBHOOK_URL)
-    logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
+    await bot.set_webhook(WEBHOOK_URL_FULL)
+    logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL_FULL}")
 
 async def on_shutdown(app: web.Application):
     logger.info("Bot shutdown boshlandi...")
@@ -47,12 +48,13 @@ async def on_shutdown(app: web.Application):
     await bot.session.close()
     logger.info("Bot sessiyasi yopildi")
 
-# ---------------- Initialize Routers ----------------
+# ---------------- Init Routers & DB ----------------
 async def init_app():
     dp.include_router(user_menu_router)
     dp.include_router(codes_router)
     dp.include_router(vip_router)
     dp.include_router(admin_router)
+
     logger.info("Database ishga tushmoqda...")
     await init_db()
 
@@ -78,64 +80,47 @@ async def create_app():
 
     return app
 
-# ---------------- Command / Menu Handlers ----------------
+# ---------------- Menu Handlers ----------------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    try:
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("🎬 Kino qo‘shish", "🎟 VIP")
-        kb.add("🛠 Admin")
-        await message.answer("Salom! Botga xush kelibsiz. Menyudan tanlang:", reply_markup=kb)
-    except Exception as e:
-        logger.error(f"Start command xato: {e}")
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("🎬 Kino qo‘shish", "🎟 VIP")
+    kb.add("🛠 Admin")
+    await message.answer("Salom! Botga xush kelibsiz. Menyudan tanlang:", reply_markup=kb)
 
 @dp.message(F.text == "🎬 Kino qo‘shish")
 async def menu_add_movie(message: types.Message):
-    try:
-        if message.from_user.id not in settings.admin_ids:
-            await message.answer("Siz admin emassiz, kino qo‘sha olmaysiz!")
-            return
-        await message.answer("Kino qo‘shish funktsiyasi ishlamoqda...")
-        # Bu yerga admin_router/kino qo‘shish funksiyasini chaqirish mumkin
-    except Exception as e:
-        logger.error(f"Kino qo‘shish xato: {e}")
+    if message.from_user.id not in settings.admin_ids:
+        await message.answer("Siz admin emassiz, kino qo‘sha olmaysiz!")
+        return
+    await message.answer("Kino qo‘shish funktsiyasi ishlamoqda...")
 
 @dp.message(F.text == "🎟 VIP")
 async def menu_vip(message: types.Message):
-    try:
-        await message.answer("VIP bo‘limiga xush kelibsiz!")
-    except Exception as e:
-        logger.error(f"VIP menyu xato: {e}")
+    await message.answer("VIP bo‘limiga xush kelibsiz!")
 
 @dp.message(F.text == "🛠 Admin")
 async def menu_admin(message: types.Message):
-    try:
-        if message.from_user.id in settings.admin_ids:
-            await message.answer("Admin bo‘limiga xush kelibsiz!")
-        else:
-            await message.answer("Siz admin emassiz!")
-    except Exception as e:
-        logger.error(f"Admin menyu xato: {e}")
+    if message.from_user.id in settings.admin_ids:
+        await message.answer("Admin bo‘limiga xush kelibsiz!")
+    else:
+        await message.answer("Siz admin emassiz!")
 
-# ---------------- Inline Example ----------------
+# ---------------- Inline Callback Example ----------------
 @dp.callback_query(F.data == "confirm_add")
 async def callback_confirm_add(callback: types.CallbackQuery):
-    try:
-        await callback.message.answer("Kino qo‘shildi ✅")
-        await callback.answer()
-    except Exception as e:
-        logger.error(f"Callback xato: {e}")
+    await callback.message.answer("Kino qo‘shildi ✅")
+    await callback.answer()
 
 # ---------------- Main ----------------
-async def main():
-    app = await create_app()
+def main():
+    app = asyncio.run(create_app())
     port = int(os.environ.get("PORT", 8080))
     logger.info(f"Server {port} portda ishga tushdi")
     web.run_app(app, host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     try:
-        import asyncio
-        asyncio.run(main())
+        main()
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot to'xtatildi")

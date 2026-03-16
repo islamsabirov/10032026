@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+import asyncio
 from aiohttp import web
 
 # Root va bot papkalarni Python path-ga qo‘shish
@@ -54,7 +55,6 @@ async def init_app():
     dp.include_router(codes_router)
     dp.include_router(vip_router)
     dp.include_router(admin_router)
-
     logger.info("Database ishga tushmoqda...")
     await init_db()
 
@@ -85,7 +85,7 @@ async def create_app():
 async def cmd_start(message: types.Message):
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("🎬 Kino qo‘shish", "🎟 VIP")
-    kb.add("🛠 Admin")
+    kb.add("🛠 Admin", "📜 Kodlar")
     await message.answer("Salom! Botga xush kelibsiz. Menyudan tanlang:", reply_markup=kb)
 
 @dp.message(F.text == "🎬 Kino qo‘shish")
@@ -93,7 +93,7 @@ async def menu_add_movie(message: types.Message):
     if message.from_user.id not in settings.admin_ids:
         await message.answer("Siz admin emassiz, kino qo‘sha olmaysiz!")
         return
-    await message.answer("Kino qo‘shish funktsiyasi ishlamoqda...")
+    await message.answer("Kino qo‘shish funksiyasi ishlamoqda...")
 
 @dp.message(F.text == "🎟 VIP")
 async def menu_vip(message: types.Message):
@@ -102,9 +102,15 @@ async def menu_vip(message: types.Message):
 @dp.message(F.text == "🛠 Admin")
 async def menu_admin(message: types.Message):
     if message.from_user.id in settings.admin_ids:
-        await message.answer("Admin bo‘limiga xush kelibsiz!")
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        kb.add("📊 Statistika", "⚙️ Sozlamalar")
+        await message.answer("Admin bo‘limiga xush kelibsiz!", reply_markup=kb)
     else:
         await message.answer("Siz admin emassiz!")
+
+@dp.message(F.text == "📜 Kodlar")
+async def menu_codes(message: types.Message):
+    await message.answer("Kodlar bo‘limi ishga tushdi!")
 
 # ---------------- Inline Callback Example ----------------
 @dp.callback_query(F.data == "confirm_add")

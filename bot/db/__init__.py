@@ -1,6 +1,8 @@
-from .base import engine, Base, get_session, AsyncSessionMaker
-from .init_db import init_db
-from . import models
+# db/__init__.py
+
+from bot.db.base import engine, Base, get_session, AsyncSessionMaker
+from bot.db.init_db import init_db
+from bot.db import models
 
 __all__ = [
     "engine",

@@ -14,6 +14,7 @@ class Settings:
     db_url: str
     required_channels: List[str]
     webhook_url: str
+    port: int
 
 
 def _parse_admin_ids(raw: str | None) -> List[int]:
@@ -58,14 +59,16 @@ def get_settings() -> Settings:
 
     admin_ids_raw = os.getenv("ADMIN_IDS", "")
     required_channels_raw = os.getenv("REQUIRED_CHANNELS", "")
-    db_url = os.getenv("DB_URL", "sqlite+aiosqlite:///./bot.db")
+    db_url = os.getenv("DB_URL", "sqlite+aiosqlite:///data/bot.db")
+    port = int(os.getenv("PORT", 8080))
 
     settings = Settings(
         bot_token=bot_token,
         admin_ids=_parse_admin_ids(admin_ids_raw),
         required_channels=_parse_channels(required_channels_raw),
         db_url=db_url,
-        webhook_url=webhook_url,
+        webhook_url=webhook_url.rstrip("/"),  # oxirgi slash ni olib tashlash
+        port=port,
     )
 
     print("✅ Bot sozlamalari yuklandi:")
@@ -73,9 +76,10 @@ def get_settings() -> Settings:
     print(f"Required Channels: {settings.required_channels}")
     print(f"DB URL: {settings.db_url}")
     print(f"Webhook URL: {settings.webhook_url}")
+    print(f"Port: {settings.port}")
 
     return settings
 
 
-# Global settings obyekt
+# Global settings obyekti
 settings = get_settings()

@@ -1,89 +1,53 @@
-from datetime import datetime
-
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import (
+    Column, BigInteger, String, Boolean, 
+    DateTime, Integer, Text, func
+)
 from .base import Base
 
 
 class User(Base):
+    """Foydalanuvchilar modeli"""
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    telegram_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
-    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
-    vip_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    username = Column(String(255), nullable=True)
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    is_admin = Column(Boolean, default=False)
+    is_vip = Column(Boolean, default=False)
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_active = Column(DateTime(timezone=True), onupdate=func.now())
 
-    payments: Mapped[list["Payment"]] = relationship(back_populates="user")
-    code_usages: Mapped[list["CodeUsage"]] = relationship(back_populates="user")
+    def __repr__(self):
+        return f"<User {self.telegram_id} {self.username}>"
 
 
-class Movie(Base):
-    __tablename__ = "movies"
+class Code(Base):
+    """Kodlar modeli"""
+    __tablename__ = "codes"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
-    title: Mapped[str] = mapped_column(String(255))
-    info: Mapped[str | None] = mapped_column(Text, nullable=True)
-    channel_post_link: Mapped[str] = mapped_column(Text)
-    file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    is_used = Column(Boolean, default=False)
+    used_by = Column(BigInteger, nullable=True)  # telegram_id
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    used_at = Column(DateTime(timezone=True), nullable=True)
 
-    code_usages: Mapped[list["CodeUsage"]] = relationship(back_populates="movie")
+    def __repr__(self):
+        return f"<Code {self.code} used={self.is_used}>"
 
 
 class Payment(Base):
+    """To'lovlar modeli"""
     __tablename__ = "payments"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    days: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    amount = Column(Integer, nullable=False)  # so'mda
+    status = Column(String(50), default="pending")  # pending, paid, cancelled
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    paid_at = Column(DateTime(timezone=True), nullable=True)
 
-    user: Mapped["User"] = relationship(back_populates="payments")
-
-
-class CodeUsage(Base):
-    __tablename__ = "code_usages"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    movie_id: Mapped[int] = mapped_column(ForeignKey("movies.id"), nullable=False)
-    used_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
-
-    user: Mapped["User"] = relationship(back_populates="code_usages")
-    movie: Mapped["Movie"] = relationship(back_populates="code_usages")
-
-
-class Channel(Base):
-    __tablename__ = "channels"
-    
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    link: Mapped[str] = mapped_column(String(255), unique=True)
-    channel_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    channel_type: Mapped[str] = mapped_column(String(50), default="public")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    def __repr__(self):
+        return f"<Payment {self.id} user={self.user_id} status={self.status}>"

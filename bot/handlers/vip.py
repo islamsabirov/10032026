@@ -1,121 +1,67 @@
-from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from bot.config import settings
-from bot.db import AsyncSessionMaker
-from bot.db.models import Payment, User
-from bot.services.codes import get_or_create_user
-
+from aiogram import Router
+from aiogram.filters import Command
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 router = Router()
 
 
-class VipStates(StatesGroup):
-    waiting_screenshot = State()
-
-
-TARIFFS = {
-    20: 20000,  # 20 kun uchun summa (so'm)
-    30: 30000,  # 30 kun uchun summa (so'm)
-}
-
-
-@router.callback_query(F.data.startswith("vip:plan:"))
-async def cb_vip_plan(callback: CallbackQuery, state: FSMContext) -> None:
-    parts = callback.data.split(":")
-    try:
-        days = int(parts[2])
-    except (IndexError, ValueError):
-        await callback.answer("Noto‘g‘ri tarif.", show_alert=True)
-        return
-
-    amount = TARIFFS.get(days)
-    if amount is None:
-        await callback.answer("Bu tarif mavjud emas.", show_alert=True)
-        return
-
-    await state.set_state(VipStates.waiting_screenshot)
-    await state.update_data(days=days, amount=amount)
-
+@router.message(Command("vip"))
+async def vip_info(message: Message):
+    """VIP haqida ma'lumot"""
     text = (
-        f"Tanlagan tarifingiz: {days} kun VIP.\n"
-        f"To‘lov summasi: <b>{amount} so‘m</b>.\n\n"
-        "To‘lovni Payme/Uzcard/Visa orqali amalga oshiring, so‘ng shu yerga "
-        "to‘lov chek skrinshotini rasm sifatida yuboring.\n\n"
-        "Admin to‘lovni tasdiqlaganidan keyin VIP rejim faollashadi."
+        "👑 <b>VIP foydalanuvchilar uchun imkoniyatlar:</b>\n\n"
+        "✅ Kunlik 5 ta kod olish\n"
+        "✅ Yangi kurslardan birinchi bo'lib xabardor bo'lish\n"
+        "✅ Maxsus VIP kanalga qo'shilish\n"
+        "✅ Barcha kurslarga chegirma\n"
+        "✅ Shaxsiy kurator\n\n"
+        "⭐ <b>VIP obuna narxi:</b> 50 000 so'm/oy\n\n"
+        "VIP bo'lish uchun /buyvip"
     )
-    await callback.message.answer(text)
-    await callback.answer()
-
-
-@router.message(VipStates.waiting_screenshot, F.photo)
-async def handle_vip_screenshot(message: Message, state: FSMContext) -> None:
-    data = await state.get_data()
-    days: int = data.get("days", 0)
-    amount: int = data.get("amount", 0)
-
-    if not days or not amount:
-        await message.answer("Tarif ma'lumotlari topilmadi. Iltimos, VIP menyudan qayta tanlang.")
-        await state.clear()
-        return
-
-    async with AsyncSessionMaker() as session:  # type: AsyncSession
-        user: User = await get_or_create_user(
-            session,
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-        )
-
-        payment = Payment(
-            user_id=user.id,
-            amount=amount,
-            days=days,
-            status="pending",
-        )
-        session.add(payment)
-        await session.flush()
-        await session.commit()
-
-    # Adminlarga xabar yuborish
-    caption = (
-        f"Yangi VIP to‘lov so‘rovi #{payment.id}\n"
-        f"Foydalanuvchi: @{message.from_user.username or message.from_user.id}\n"
-        f"Telegram ID: {message.from_user.id}\n"
-        f"Tarif: {days} kun\n"
-        f"Summa: {amount} so‘m"
-    )
-
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-    from aiogram.types import InlineKeyboardButton
-
+    
+    # Inline tugmalar
     kb = InlineKeyboardBuilder()
-    kb.row(
-        InlineKeyboardButton(
-            text="✅ Tasdiqlash",
-            callback_data=f"payment:approve:{payment.id}",
-        ),
-        InlineKeyboardButton(
-            text="❌ Rad etish",
-            callback_data=f"payment:reject:{payment.id}",
-        ),
+    kb.button(text="💳 Sotib olish", callback_data="buy_vip")
+    kb.button(text="❓ Savol-javob", callback_data="vip_faq")
+    kb.adjust(1)
+    
+    await message.answer(text, reply_markup=kb.as_markup())
+
+
+@router.message(Command("buyvip"))
+async def buy_vip(message: Message):
+    """VIP sotib olish"""
+    text = (
+        "💳 <b>VIP obuna sotib olish</b>\n\n"
+        "To'lov qilish uchun quyidagi ma'lumotlardan birini tanlang:\n\n"
+        "1️⃣ Click: 123456789\n"
+        "2️⃣ Payme: 987654321\n"
+        "3️⃣ Uzum Bank: 555667788\n\n"
+        "To'lovdan so'ng chekni @admin ga yuboring."
     )
-
-    for admin_id in settings.admin_ids:
-        try:
-            await message.bot.send_photo(
-                chat_id=admin_id,
-                photo=message.photo[-1].file_id,
-                caption=caption,
-                reply_markup=kb.as_markup(),
-            )
-        except Exception:
-            continue
-
-    await message.answer(
-        "To‘lov chek skrinshoti adminlarga yuborildi. Iltimos, tasdiqlashni kuting."
+    
+    # To'lov variantlari
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Click", url="https://click.uz")],
+            [InlineKeyboardButton(text="✅ Payme", url="https://payme.uz")],
+            [InlineKeyboardButton(text="📞 Admin bilan bog'lanish", url="https://t.me/admin")]
+        ]
     )
-    await state.clear()
+    
+    await message.answer(text, reply_markup=kb)
 
+
+@router.message(Command("vipmenu"))
+async def vip_menu(message: Message):
+    """VIP menyu (faqat VIP lar uchun)"""
+    # Bu yerda VIP tekshiruvi bo'lishi kerak
+    text = (
+        "👑 <b>VIP menyu:</b>\n\n"
+        "/getcode - kod olish\n"
+        "/vipcourse - maxsus kurslar\n"
+        "/vipchat - VIP chat\n"
+        "/vipsupport - VIP yordam"
+    )
+    await message.answer(text)

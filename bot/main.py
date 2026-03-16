@@ -1,12 +1,6 @@
-import sys
 import os
 import logging
 from aiohttp import web
-
-# Python path ga root va bot papkalarni qo‘shish
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
-sys.path.append(os.path.dirname(BASE_DIR))
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -36,7 +30,7 @@ bot = Bot(
 )
 dp = Dispatcher(storage=MemoryStorage())
 
-# Routers
+# Routerlarni ulash
 dp.include_router(user_menu_router)
 dp.include_router(codes_router)
 dp.include_router(vip_router)
@@ -46,6 +40,10 @@ dp.include_router(admin_router)
 async def on_startup(app: web.Application):
     """DB ishga tushirish va webhook o'rnatish"""
     logger.info("Database ishga tushmoqda...")
+    
+    # data/ papkasini tekshirish
+    os.makedirs("data", exist_ok=True)
+    
     await init_db()
     await bot.set_webhook(WEBHOOK_URL)
     logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
@@ -54,12 +52,15 @@ async def on_startup(app: web.Application):
 async def on_shutdown(app: web.Application):
     """Webhook o'chirish va sessiyalarni yopish"""
     await bot.delete_webhook()
+    
     # Bot sessiyasini yopish
     if not bot.session.closed:
         await bot.session.close()
-    # Dispatcher storage to‘liq yopish
+    
+    # Dispatcher storage to'liq yopish
     await dp.storage.close()
     await dp.storage.wait_closed()
+    
     logger.info("Webhook va sessiyalar yopildi")
 
 
@@ -89,8 +90,7 @@ def create_app() -> web.Application:
 
 
 if __name__ == "__main__":
-    # Render muhitida PORT o'qiladi
-    port = int(os.environ.get("PORT", 8080))
+    port = settings.port
     logger.info(f"Server {port}-portda ishga tushmoqda...")
     
     # Aiohttp serverni ishga tushirish

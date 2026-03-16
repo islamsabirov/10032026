@@ -1,62 +1,97 @@
-from aiogram import F, Router
+from aiogram import Router
+from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
-from bot.db import AsyncSessionMaker
-from bot.services.codes import get_movie_by_code, get_or_create_user, register_code_usage
-from bot.services.limits import can_use_code
-from bot.services.subscription import check_subscription
-
+from db import get_session
+from db.models import Code, User
+from sqlalchemy import select, update
 
 router = Router()
 
-# Oddiy foydalanuvchi uchun kunlik kod limiti
-DAILY_LIMIT = 3
 
-
-@router.message(F.text & ~F.text.startswith("/"))
-async def handle_code(message: Message) -> None:
-    code = message.text.strip()
-    if not code:
-        return
-
-    bot = message.bot
-
-    # Avval kanal obunasini tekshiramiz
-    is_member, channel_link = await check_subscription(bot, message.from_user.id)
-    if not is_member:
-        text = (
-            "Kod ishlatishdan oldin kanalga obuna bo‘lishingiz kerak.\n\n"
-            f"👉 Kanal: {channel_link}\n"
-            "Obuna bo‘lgach, yana kodni yuboring."
+@router.message(Command("getcode"))
+async def get_code(message: Message):
+    """Yangi kod olish"""
+    user_id = message.from_user.id
+    
+    # Foydalanuvchini tekshirish (VIP yoki yo'q)
+    # Hozircha hamma olishi mumkin, keyin VIP tekshiruvi qo'shiladi
+    
+    async with get_session() as session:
+        # Ishlatilmagan kodni topish
+        result = await session.execute(
+            select(Code).where(Code.is_used == False).limit(1)
         )
-        await message.answer(text)
-        return
-
-    async with AsyncSessionMaker() as session:  # type: AsyncSession
-        user = await get_or_create_user(
-            session,
-            telegram_id=message.from_user.id,
-            username=message.from_user.username,
-        )
-
-        # Limit tekshiruvi
-        if not await can_use_code(session, user, DAILY_LIMIT):
-            await message.answer(
-                "Bugungi kunlik kod limitidan oshib ketdingiz. "
-                "Ertaga yana urinib ko‘ring yoki VIP bo‘lishni o‘ylab ko‘ring."
+        code = result.scalar_one_or_none()
+        
+        if code:
+            # Kodni ishlatilgan deb belgilash
+            code.is_used = True
+            code.used_by = user_id
+            code.used_at = datetime.now()
+            
+            # Foydalanuvchini bazaga qo'shish (agar mavjud bo'lmasa)
+            user_result = await session.execute(
+                select(User).where(User.telegram_id == user_id)
             )
-            return
+            user = user_result.scalar_one_or_none()
+            
+            if not user:
+                new_user = User(
+                    telegram_id=user_id,
+                    username=message.from_user.username,
+                    first_name=message.from_user.first_name,
+                    last_name=message.from_user.last_name
+                )
+                session.add(new_user)
+            
+            await session.commit()
+            
+            await message.answer(
+                f"✅ <b>Sizning kodingiz:</b>\n"
+                f"<code>{code.code}</code>\n\n"
+                f"Kodni kurslarni ochish uchun ishlatishingiz mumkin."
+            )
+        else:
+            await message.answer("❌ Kechirasiz, kodlar tugagan.")
 
-        movie = await get_movie_by_code(session, code)
-        if movie is None:
-            await message.answer("❌ Bunday kod topilmadi yoki kino o‘chirib tashlangan.")
-            return
 
-        await register_code_usage(session, user, movie)
+@router.message(Command("use"))
+async def use_code(message: Message, command: CommandObject):
+    """Kodni ishlatish"""
+    code_text = command.args
+    
+    if not code_text:
+        await message.answer("❌ Iltimos, kodni kiriting: /use KOD123")
+        return
+    
+    async with get_session() as session:
+        # Kodni tekshirish
+        result = await session.execute(
+            select(Code).where(Code.code == code_text)
+        )
+        code = result.scalar_one_or_none()
+        
+        if not code:
+            await message.answer("❌ Bunday kod mavjud emas.")
+            return
+        
+        if code.is_used:
+            await message.answer("❌ Bu kod allaqachon ishlatilgan.")
+            return
+        
+        # Kodni ishlatish
+        code.is_used = True
+        code.used_by = message.from_user.id
+        code.used_at = datetime.now()
+        
+        # Foydalanuvchini VIP qilish (agar kod VIP uchun bo'lsa)
+        # Bu yerda kod turiga qarab ishlov berish mumkin
+        
         await session.commit()
-
-    await message.answer(
-        f"✅ Kod tasdiqlandi.\n\nKino ssilkasi:\n{movie.channel_post_link}"
-    )
-
+        
+        await message.answer(
+            f"✅ <b>Kod muvaffaqiyatli qabul qilindi!</b>\n\n"
+            f"Siz endi maxsus kurslardan foydalanishingiz mumkin."
+        )

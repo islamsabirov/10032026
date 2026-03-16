@@ -1,132 +1,87 @@
 import sys
 import os
 import logging
-import asyncio
 from aiohttp import web
 
-# Root va bot papkalarni Python path-ga qo‘shish
+# Root va bot papkalarni import yo‘lida qo‘shish
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.dirname(BASE_DIR))
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.filters import Command
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from config import settings
 from db import init_db
 from handlers import admin_router, codes_router, user_menu_router, vip_router
 
+# Logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# ---------------- Webhook ----------------
+# Webhook sozlamalari
 WEBHOOK_PATH = "/webhook"
-WEBHOOK_URL_FULL = f"{settings.webhook_url}{WEBHOOK_PATH}"
+WEBHOOK_URL = f"{settings.webhook_url}{WEBHOOK_PATH}"
 
+# Bot va Dispatcher
 bot = Bot(
     token=settings.bot_token,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher(storage=MemoryStorage())
 
-# ---------------- Startup / Shutdown ----------------
+# Routers
+dp.include_router(user_menu_router)
+dp.include_router(codes_router)
+dp.include_router(vip_router)
+dp.include_router(admin_router)
+
 async def on_startup(app: web.Application):
-    await bot.set_webhook(WEBHOOK_URL_FULL)
-    logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL_FULL}")
-
-async def on_shutdown(app: web.Application):
-    logger.info("Bot shutdown boshlandi...")
-    await bot.delete_webhook()
-    await dp.storage.close()
-    await dp.storage.wait_closed()
-    await bot.session.close()
-    logger.info("Bot sessiyasi yopildi")
-
-# ---------------- Init Routers & DB ----------------
-async def init_app():
-    dp.include_router(user_menu_router)
-    dp.include_router(codes_router)
-    dp.include_router(vip_router)
-    dp.include_router(admin_router)
+    """Webhook o'rnatish va DB ishga tushirish"""
     logger.info("Database ishga tushmoqda...")
     await init_db()
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"Webhook o'rnatildi: {WEBHOOK_URL}")
 
-# ---------------- Create aiohttp App ----------------
-async def create_app():
-    await init_app()
+async def on_shutdown(app: web.Application):
+    """Webhook o'chirish va sessiyalarni yopish"""
+    await bot.delete_webhook()
+    await bot.session.close()
+    await dp.storage.close()
+    await dp.storage.wait_closed()
+    logger.info("Webhook va sessiyalar yopildi")
+
+def create_app() -> web.Application:
+    """Aiohttp ilovasini yaratish"""
     app = web.Application()
+    
+    # Webhook handler
+    handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+    handler.register(app, path=WEBHOOK_PATH)
 
-    webhook_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    webhook_handler.register(app, path=WEBHOOK_PATH)
-
+    # Dispatcher integratsiyasi
     setup_application(app, dp, bot=bot)
 
+    # Startup / shutdown
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
-    # Health check
+    # Health check (Render uchun)
     async def health(request):
-        return web.Response(text="Bot is running", status=200)
+        return web.Response(text="Bot is running")
 
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
 
     return app
 
-# ---------------- Menu Handlers ----------------
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🎬 Kino qo‘shish", "🎟 VIP")
-    kb.add("🛠 Admin", "📜 Kodlar")
-    await message.answer("Salom! Botga xush kelibsiz. Menyudan tanlang:", reply_markup=kb)
-
-@dp.message(F.text == "🎬 Kino qo‘shish")
-async def menu_add_movie(message: types.Message):
-    if message.from_user.id not in settings.admin_ids:
-        await message.answer("Siz admin emassiz, kino qo‘sha olmaysiz!")
-        return
-    await message.answer("Kino qo‘shish funksiyasi ishlamoqda...")
-
-@dp.message(F.text == "🎟 VIP")
-async def menu_vip(message: types.Message):
-    await message.answer("VIP bo‘limiga xush kelibsiz!")
-
-@dp.message(F.text == "🛠 Admin")
-async def menu_admin(message: types.Message):
-    if message.from_user.id in settings.admin_ids:
-        kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add("📊 Statistika", "⚙️ Sozlamalar")
-        await message.answer("Admin bo‘limiga xush kelibsiz!", reply_markup=kb)
-    else:
-        await message.answer("Siz admin emassiz!")
-
-@dp.message(F.text == "📜 Kodlar")
-async def menu_codes(message: types.Message):
-    await message.answer("Kodlar bo‘limi ishga tushdi!")
-
-# ---------------- Inline Callback Example ----------------
-@dp.callback_query(F.data == "confirm_add")
-async def callback_confirm_add(callback: types.CallbackQuery):
-    await callback.message.answer("Kino qo‘shildi ✅")
-    await callback.answer()
-
-# ---------------- Main ----------------
-def main():
-    app = asyncio.run(create_app())
-    port = int(os.environ.get("PORT", 8080))
-    logger.info(f"Server {port} portda ishga tushdi")
-    web.run_app(app, host="0.0.0.0", port=port)
-
 if __name__ == "__main__":
-    try:
-        main()
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot to'xtatildi")
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Server {port}-portda ishga tushmoqda...")
+    web.run_app(create_app(), host="0.0.0.0", port=port)

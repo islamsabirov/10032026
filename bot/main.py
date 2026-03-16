@@ -1,6 +1,5 @@
 import sys
 import os
-import asyncio
 import logging
 from aiohttp import web
 
@@ -42,9 +41,15 @@ async def on_startup(app: web.Application):
 
 
 async def on_shutdown(app: web.Application):
-    """Webhook o'chirish"""
+    """Webhook o'chirish va sessiyalarni yopish"""
+    logger.info("Bot shutdown boshlandi...")
     await bot.delete_webhook()
     logger.info("Webhook o'chirildi")
+
+    await dp.storage.close()
+    await dp.storage.wait_closed()
+    await bot.session.close()
+    logger.info("Bot sessiyasi yopildi")
 
 
 async def init_app():
@@ -74,8 +79,9 @@ async def create_app():
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
 
+    # Health check
     async def health(request):
-        return web.Response(text="Bot is running")
+        return web.Response(text="Bot is running", status=200)
 
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
@@ -83,18 +89,13 @@ async def create_app():
     return app
 
 
-async def main():
-    """Serverni ishga tushirish asyncio bilan to‘g‘ri"""
-    app = await create_app()
-    port = int(os.environ.get("PORT", 8080))
-    logger.info(f"Server {port} portda ishga tushdi")
-
-    # web._run_app async coroutine, asyncio.run bilan mos
-    await web._run_app(app, host="0.0.0.0", port=port)
-
-
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot to'xtatildi")
+    port = int(os.environ.get("PORT", 8080))
+    app = create_app()  # asyncio event loop ichida run qilinadi
+
+    # web.run_app async shutdown/startup bilan ishlaydi
+    web.run_app(
+        app,
+        host="0.0.0.0",
+        port=port
+    )

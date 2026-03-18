@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: kino-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn bot.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: PRIVATE_CHANNEL_ID
+        sync: false
+      - key: DATABASE_URL
+        value: "sqlite+aiosqlite:///data/kino.db"
+      - key: WEBHOOK_URL
+        fromService:
+          name: kino-bot
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+    disk:
+      name: bot-data
+      mountPath: /data
+      sizeGB: 1

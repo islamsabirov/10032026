@@ -1,6 +1,6 @@
 """
-Kino Bot - Asosiy fayl
-FastAPI + Aiogram 3.15.0
+Kino Bot - Minimal versiya
+FastAPI + Aiogram 3.26.0
 """
 
 import os
@@ -38,61 +38,44 @@ bot = Bot(
 )
 dp = Dispatcher(storage=storage)
 
-# Handlerlarni kechiktirib import qilish (circular import oldini olish)
+# Routerlarni ulash (minimal)
 async def include_routers():
-    """Routerlarni ulash"""
-    try:
-        from bot.handlers import user, admin, premium
-        
-        dp.include_router(user.router)
-        dp.include_router(admin.router)
-        dp.include_router(premium.router)
-        
-        logger.info("✅ Routerlar muvaffaqiyatli ulandi")
-    except Exception as e:
-        logger.error(f"❌ Routerlarni ulashda xatolik: {e}")
+    logger.info("✅ Routerlarni ulash o'tkazib yuborildi (test uchun)")
 
 # Lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup va shutdown eventlari
-    """
-    # Startup
     try:
         logger.info("🚀 Bot ishga tushmoqda...")
-        
-        # Routerlarni ulash
         await include_routers()
-        
-        # Webhook URL ni yaratish
+
         if not WEBHOOK_URL:
-            port = os.getenv('PORT', '10000')
+            port = os.getenv('PORT', '8000')
             render_url = os.getenv('RENDER_EXTERNAL_URL', f'http://localhost:{port}')
             full_webhook_url = f"{render_url}{WEBHOOK_PATH}"
         else:
             full_webhook_url = f"{WEBHOOK_URL}{WEBHOOK_PATH}"
-        
-        # Webhook ni o'rnatish
+
+        # Webhook o'rnatish
         await bot.set_webhook(
             url=full_webhook_url,
             secret_token=WEBHOOK_SECRET,
             allowed_updates=['message', 'callback_query', 'chat_member']
         )
-        
+
         # Webhook info
         webhook_info = await bot.get_webhook_info()
         logger.info(f"✅ Webhook o'rnatildi: {webhook_info.url}")
-        
-        # Bot ma'lumotlari
+
+        # Bot info
         bot_info = await bot.me()
         logger.info(f"🤖 Bot: @{bot_info.username} (ID: {bot_info.id})")
-        
+
     except Exception as e:
         logger.error(f"❌ Startup xatolik: {e}")
-    
-    yield  # App ishlaydi
-    
+
+    yield
+
     # Shutdown
     try:
         logger.info("🛑 Bot to'xtatilmoqda...")
@@ -103,119 +86,41 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ Shutdown xatolik: {e}")
 
 # FastAPI ilovasi
-app = FastAPI(
-    title="Kino Bot API",
-    description="Telegram kino boti uchun webhook server",
-    version="1.0.0",
-    lifespan=lifespan
-)
+app = FastAPI(lifespan=lifespan, title="Kino Bot API", version="1.0.0")
 
 # Health check endpoint
 @app.get("/")
 @app.get("/health")
 async def health_check():
-    """Bot holatini tekshirish"""
     try:
         webhook_info = await bot.get_webhook_info()
         bot_info = await bot.me()
-        
         return {
             "status": "healthy",
-            "bot": {
-                "username": bot_info.username,
-                "id": bot_info.id,
-                "is_running": True
-            },
-            "webhook": {
-                "url": webhook_info.url,
-                "pending_updates": webhook_info.pending_update_count,
-                "is_set": webhook_info.url is not None
-            }
+            "bot": {"username": bot_info.username, "id": bot_info.id, "is_running": True},
+            "webhook": {"url": webhook_info.url, "pending_updates": webhook_info.pending_update_count}
         }
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+        return {"status": "unhealthy", "error": str(e)}
 
 # Webhook endpoint
 @app.post(WEBHOOK_PATH)
 async def webhook(request: Request) -> dict:
-    """
-    Telegram dan kelgan update larni qabul qilish
-    """
     try:
-        # Request body ni o'qish
         update_data = await request.json()
-        logger.debug(f"📩 Webhook keldi: {update_data.get('update_id')}")
-        
-        # Update ni dispatcher ga yuborish
         await dp.feed_update(bot, update_data)
-        
-        return {
-            "status": "ok",
-            "update_id": update_data.get('update_id')
-        }
+        return {"status": "ok", "update_id": update_data.get("update_id")}
     except Exception as e:
         logger.error(f"❌ Webhook xatolik: {e}")
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
-# Webhook status endpoint
-@app.get("/webhook-info")
-async def webhook_info():
-    """Webhook sozlamalari haqida ma'lumot"""
-    try:
-        webhook_info = await bot.get_webhook_info()
-        return {
-            "url": webhook_info.url,
-            "has_custom_certificate": webhook_info.has_custom_certificate,
-            "pending_update_count": webhook_info.pending_update_count,
-            "max_connections": webhook_info.max_connections,
-            "last_error_date": str(webhook_info.last_error_date) if webhook_info.last_error_date else None,
-            "last_error_message": webhook_info.last_error_message,
-            "last_synchronization_error_date": str(webhook_info.last_synchronization_error_date) if webhook_info.last_synchronization_error_date else None,
-            "allowed_updates": webhook_info.allowed_updates
-        }
-    except Exception as e:
-        return {"error": str(e)}
-
-# Bot info endpoint
-@app.get("/bot-info")
-async def bot_info():
-    """Bot haqida ma'lumot"""
-    try:
-        bot_data = await bot.me()
-        return {
-            "id": bot_data.id,
-            "username": bot_data.username,
-            "first_name": bot_data.first_name,
-            "can_join_groups": bot_data.can_join_groups,
-            "can_read_all_group_messages": bot_data.can_read_all_group_messages,
-            "supports_inline_queries": bot_data.supports_inline_queries
-        }
-    except Exception as e:
-        return {"error": str(e)}
+        return {"status": "error", "message": str(e)}
 
 # Test endpoint
 @app.get("/test")
 async def test():
-    """Test endpoint"""
-    return {
-        "message": "Bot API ishlayapti!",
-        "version": "1.0.0",
-        "aiogram_version": "3.15.0",
-        "fastapi_version": "0.115.0"
-    }
+    return {"message": "Bot API ishlayapti!", "version": "1.0.0"}
 
+# Ishga tushirish
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv('PORT', 8000))
-    uvicorn.run(
-        "bot.main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=False  # Production da reload=False bo'lishi kerak
-    )
+    uvicorn.run("bot.main:app", host="0.0.0.0", port=port, reload=False)
